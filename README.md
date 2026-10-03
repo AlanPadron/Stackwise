@@ -45,21 +45,3 @@ The platform is designed to support multiple popular programming languages and p
 Stackwise is designed around a modular architecture that separates repository integration, API services, static analysis, result processing, and data persistence.
 
 ```mermaid
-
-User
-  ↓
-Web Application
-  ↓
-API
-  ↓
-Repository Integration
-  ↓
-Analysis Engine
-  ↓
-Static Analysis
-  ↓
-Result Processing
-  ↓
-Database
-  ↓
-Dashboard
