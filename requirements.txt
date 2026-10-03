@@ -1,0 +1,15 @@
+fastapi[all]
+uvicorn
+sqlalchemy>=2.0.0
+alembic
+psycopg2-binary
+pydantic-settings
+pydantic[email]
+python-jose[cryptography]
+passlib[bcrypt]
+pytest
+pytest-asyncio
+httpx
+ruff
+bandit
+radon

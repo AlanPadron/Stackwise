@@ -1,0 +1,170 @@
+
+> frontend@1.0.0 dev
+> vite --host 0.0.0.0 --port 3000
+
+1:55:28 p.m. [vite] (client) Re-optimizing dependencies because lockfile has changed
+
+  VITE v8.3.2  ready in 127 ms
+
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: http://192.168.101.14:3000/  enp6s0
+(!) Failed to run dependency scan. Skipping dependency pre-bundling. Error:   Failed to scan for dependencies from entries:
+  /home/dev/Documentos/Stackwise/frontend/index.html
+
+  Build failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+    at aggregateBindingErrorsIntoJsError (file:///home/dev/Documentos/Stackwise/frontend/node_modules/rolldown/dist/shared/error-Bj1xBdEY.mjs:49:18)
+    at unwrapBindingResult (file:///home/dev/Documentos/Stackwise/frontend/node_modules/rolldown/dist/shared/error-Bj1xBdEY.mjs:19:128)
+    at scan (file:///home/dev/Documentos/Stackwise/frontend/node_modules/rolldown/dist/experimental-index.mjs:241:3)
+    at async Object.build (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:27898:3)
+    at async scan (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:27837:4)
+    at async file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:35613:15
+1:55:38 p.m. [vite] (client) Pre-transform error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+1:55:38 p.m. [vite] (client) dependencies optimized: axios, react-dom/client, react-router-dom
+1:55:38 p.m. [vite] (client) optimized dependencies changed. reloading
+1:55:38 p.m. [vite] (client) Pre-transform error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+1:55:39 p.m. [vite] Internal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+      at transformWithOxc (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7581:19)
+      at TransformPluginContext.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7653:26)
+      at EnvironmentPluginContainer.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:8545:51)
+      at async loadAndTransform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:19988:26)
+      at async viteTransformMiddleware (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:20207:20)
+1:55:39 p.m. [vite] Internal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+      at transformWithOxc (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7581:19)
+      at TransformPluginContext.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7653:26)
+      at EnvironmentPluginContainer.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:8545:51)
+      at async loadAndTransform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:19988:26)
+      at async viteTransformMiddleware (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:20207:20)
+1:55:43 p.m. [vite] Internal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+      at transformWithOxc (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7581:19)
+      at TransformPluginContext.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7653:26)
+      at EnvironmentPluginContainer.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:8545:51)
+      at async loadAndTransform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:19988:26)
+      at async viteTransformMiddleware (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:20207:20)
+1:55:43 p.m. [vite] Internal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+      at transformWithOxc (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7581:19)
+      at TransformPluginContext.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7653:26)
+      at EnvironmentPluginContainer.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:8545:51)
+      at async loadAndTransform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:19988:26)
+      at async viteTransformMiddleware (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:20207:20)
+1:55:51 p.m. [vite] (client) Pre-transform error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+1:55:51 p.m. [vite] Internal server error: Transform failed with 1 error:
+
+[31m[PARSE_ERROR] [0mAdjacent JSX elements must be wrapped in an enclosing tag.
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/pages/ProjectDetail.tsx:193:29 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m193 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m<[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249m>[0m
+ [38;5;240m    │[0m                             ┬  
+ [38;5;240m    │[0m                             ╰── 
+ [38;5;240m    │[0m 
+ [38;5;240m    │[0m [38;5;115mHelp[0m: Did you want a JSX fragment `<>...</>`?
+[38;5;246m─────╯[0m
+
+  Plugin: vite:oxc
+  File: /home/dev/Documentos/Stackwise/frontend/src/pages/ProjectDetail.tsx
+      at transformWithOxc (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7581:19)
+      at TransformPluginContext.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:7653:26)
+      at EnvironmentPluginContainer.transform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:8545:51)
+      at async loadAndTransform (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:19988:26)
+      at async viteTransformMiddleware (file:///home/dev/Documentos/Stackwise/frontend/node_modules/vite/dist/node/chunks/node.js:20207:20)
