@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiClient from '../api/client';
+import apiClient, { getApiErrorMessage } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { useSplash } from '../context/SplashContext';
 
 const Register: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -8,6 +10,8 @@ const Register: React.FC = () => {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const { loginWithCredentials } = useAuth();
+    const triggerSplash = useSplash();
     const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -22,9 +26,12 @@ const Register: React.FC = () => {
         setLoading(true);
         try {
             await apiClient.post('/auth/register', { email, password });
-            navigate('/login');
-        } catch (err: any) {
-            setError(err.response?.data?.detail || 'Registration failed. Please try a different email.');
+            // Sign in automatically so the user lands on the dashboard
+            await loginWithCredentials(email, password);
+            triggerSplash();
+            navigate('/dashboard');
+        } catch (err: unknown) {
+            setError(getApiErrorMessage(err, 'Registration failed. Please try a different email.'));
         } finally {
             setLoading(false);
         }

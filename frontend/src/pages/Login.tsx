@@ -1,15 +1,17 @@
 // frontend/src/pages/Login.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiClient from '../api/client';
+import { getApiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useSplash } from '../context/SplashContext';
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { login } = useAuth();
+    const { loginWithCredentials } = useAuth();
+    const triggerSplash = useSplash();
     const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -17,21 +19,11 @@ const Login: React.FC = () => {
         setError('');
         setLoading(true);
         try {
-            // FastAPI OAuth2 uses form data for login
-            const formData = new FormData();
-            formData.append('username', email);
-            formData.append('password', password);
-
-            const response = await apiClient.post('/auth/login', formData);
-            const { access_token } = response.data;
-
-            // Fetch user info to complete the login
-            const userRes = await apiClient.get('/auth/me');
-            login(access_token, userRes.data);
-
+            await loginWithCredentials(email, password);
+            triggerSplash();
             navigate('/dashboard');
-        } catch (err: any) {
-            setError(err.response?.data?.detail || 'Authentication failed');
+        } catch (err: unknown) {
+            setError(getApiErrorMessage(err, 'Authentication failed'));
         } finally {
             setLoading(false);
         }

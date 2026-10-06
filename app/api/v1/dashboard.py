@@ -8,7 +8,7 @@ from app.models.project import Project
 from app.models.analysis import AnalysisRun, Finding
 from app.api.deps import get_current_user_email
 from pydantic import BaseModel
-from typing import Any
+from typing import Any, Optional
 
 router = APIRouter()
 

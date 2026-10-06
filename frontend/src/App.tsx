@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { SplashContext } from './context/SplashContext';
 import Splash from './components/Splash';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -11,7 +12,7 @@ import NewProject from './pages/NewProject';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { isAuthenticated, isLoading } = useAuth();
-    if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">Loading...</div>;
+    if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 dark:text-slate-200">Loading...</div>;
     if (!isAuthenticated) return <Navigate to="/login" replace />;
     return <>{children}</>;
 };
@@ -29,15 +30,22 @@ const ThemeToggle: React.FC = () => {
     );
 };
 
-const AppContent: React.FC = () => {
-    const [showSplash, setShowSplash] = useState(true);
+const SPLASH_SESSION_KEY = 'stackwise_splash_shown';
 
-    if (showSplash) {
-        return <Splash onComplete={() => setShowSplash(false)} />;
-    }
+const AppContent: React.FC = () => {
+    // The transition screen is shown only when the session starts or the user signs in,
+    // not on every reload/navigation within the same session.
+    const [showSplash, setShowSplash] = useState(
+        () => sessionStorage.getItem(SPLASH_SESSION_KEY) !== '1'
+    );
+
+    const finishSplash = () => {
+        sessionStorage.setItem(SPLASH_SESSION_KEY, '1');
+        setShowSplash(false);
+    };
 
     return (
-        <>
+        <SplashContext.Provider value={() => setShowSplash(true)}>
             <ThemeToggle />
             <Routes>
                 <Route path="/login" element={<Login />} />
@@ -47,7 +55,8 @@ const AppContent: React.FC = () => {
                 <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
-        </>
+            {showSplash && <Splash onComplete={finishSplash} />}
+        </SplashContext.Provider>
     );
 };
 

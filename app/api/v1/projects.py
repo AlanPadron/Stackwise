@@ -6,10 +6,11 @@ from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
 from app.api.deps import get_current_user_email
 from app.models.user import User
+import uuid
 
 router = APIRouter()
 
-@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     project_in: ProjectCreate,
     email: str = Depends(get_current_user_email),
@@ -31,7 +32,7 @@ async def create_project(
     await db.refresh(project)
     return project
 
-@router.get("/", response_model=list[ProjectResponse])
+@router.get("", response_model=list[ProjectResponse])
 async def list_projects(
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db)
@@ -44,7 +45,7 @@ async def list_projects(
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
-    project_id: str,
+    project_id: uuid.UUID,
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db)
 ):
@@ -64,7 +65,7 @@ async def get_project(
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(
-    project_id: str,
+    project_id: uuid.UUID,
     project_in: ProjectUpdate,
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db)
@@ -90,7 +91,7 @@ async def update_project(
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
-    project_id: str,
+    project_id: uuid.UUID,
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db)
 ):

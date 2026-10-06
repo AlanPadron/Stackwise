@@ -5,7 +5,7 @@ import { User } from '../types';
 
 interface AuthContextType {
     user: User | null;
-    login: (token: string, user: User) => void;
+    loginWithCredentials: (email: string, password: string) => Promise<User>;
     logout: () => void;
     isLoading: boolean;
     isAuthenticated: boolean;
@@ -33,9 +33,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         initAuth();
     }, []);
 
-    const login = (token: string, user: User) => {
-        localStorage.setItem('token', token);
-        setUser(user);
+    const loginWithCredentials = async (email: string, password: string): Promise<User> => {
+        // FastAPI OAuth2 login expects form data (username = email)
+        const formData = new FormData();
+        formData.append('username', email);
+        formData.append('password', password);
+
+        const { data } = await apiClient.post('/auth/login', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+
+        // Persist the token before any authenticated request so interceptors can attach it
+        localStorage.setItem('token', data.access_token);
+        const meRes = await apiClient.get('/auth/me');
+        setUser(meRes.data);
+        return meRes.data;
     };
 
     const logout = () => {
@@ -44,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, isLoading, isAuthenticated: !!user }}>
+        <AuthContext.Provider value={{ user, loginWithCredentials, logout, isLoading, isAuthenticated: !!user }}>
             {children}
         </AuthContext.Provider>
     );

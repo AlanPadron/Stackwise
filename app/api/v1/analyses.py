@@ -11,12 +11,13 @@ from app.models.user import User
 import shutil
 import tempfile
 import os
+import uuid
 
 router = APIRouter()
 
-@router.post("/{project_id}/analyses", response_model=AnalysisRunResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/projects/{project_id}/analyses", response_model=AnalysisRunResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_analysis(
-    project_id: str,
+    project_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     email: str = Depends(get_current_user_email),
@@ -51,7 +52,7 @@ async def create_analysis(
 
 @router.get("/analyses/{analysis_id}", response_model=AnalysisRunResponse)
 async def get_analysis(
-    analysis_id: str,
+    analysis_id: uuid.UUID,
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db)
 ):
@@ -74,7 +75,7 @@ async def get_analysis(
 
 @router.get("/analyses/{analysis_id}/findings", response_model=list[FindingResponse])
 async def get_findings(
-    analysis_id: str,
+    analysis_id: uuid.UUID,
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db)
 ):
@@ -97,7 +98,7 @@ async def get_findings(
 
 @router.get("/projects/{project_id}/analyses", response_model=list[AnalysisRunResponse])
 async def list_project_analyses(
-    project_id: str,
+    project_id: uuid.UUID,
     email: str = Depends(get_current_user_email),
     db: AsyncSession = Depends(get_db)
 ):

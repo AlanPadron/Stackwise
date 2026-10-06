@@ -20,13 +20,13 @@ const Splash: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     }, [onComplete]);
 
     return (
-        <div className={`fixed inset-0 z-50 flex items-center justify-center bg-white transition-all duration-1000
+        <div className={`fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-slate-900 transition-all duration-1000
             ${status === 'exit' ? 'opacity-0 blur-xl pointer-events-none' : 'opacity-100 blur-0'}`}>
 
             <div className={`transition-all duration-700 transform
                 ${status === 'entry' ? 'scale-90 opacity-0 blur-md' : 'scale-100 opacity-100 blur-0'}`}>
 
-                <h1 className="text-8xl font-serif font-bold text-slate-900 tracking-tighter select-none">
+                <h1 className="text-8xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter select-none">
                     W
                 </h1>
             </div>

@@ -42,13 +42,17 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     access_token = security.create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
+from fastapi.security import OAuth2PasswordBearer
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
 @router.get("/me", response_model=UserResponse)
-async def get_me(token: str = Depends(security.decode_access_token), db: AsyncSession = Depends(get_db)):
-    # Note: security.decode_access_token should be wrapped in a dependency that handles 401s
-    if not token:
+async def get_me(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+    payload = security.decode_access_token(token)
+    if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    email = token.get("sub")
+    email = payload.get("sub")
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
