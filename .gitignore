@@ -2,3 +2,6 @@
 .env.*
 !.env.example
 .aider*
+__pycache__/
+*.pyc
+stackwise.db
