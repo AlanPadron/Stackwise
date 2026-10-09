@@ -28,14 +28,6 @@ export const Card: React.FC<CardProps> = ({
     </div>
 );
 
-export type PanelProps = React.HTMLAttributes<HTMLDivElement>;
-
-export const Panel: React.FC<PanelProps> = ({ className, children, ...rest }) => (
-    <div className={cx('neu-panel', className)} {...rest}>
-        {children}
-    </div>
-);
-
 export type WellProps = React.HTMLAttributes<HTMLDivElement>;
 
 /** Inset container for code, metadata lines and empty states. */

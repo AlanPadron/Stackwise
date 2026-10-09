@@ -1,4 +1,4 @@
-// frontend/src/types/index.ts
+// Shapes returned by the API. Keep in sync with the Pydantic models in app/schemas/.
 export interface User {
     id: string;
     email: string;

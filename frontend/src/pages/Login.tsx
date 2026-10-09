@@ -1,4 +1,4 @@
-// frontend/src/pages/Login.tsx
+// Sign-in screen: email + password → JWT, then straight to the dashboard.
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getApiErrorMessage } from '../api/client';

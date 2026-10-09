@@ -1,4 +1,4 @@
-// frontend/src/pages/Dashboard.tsx
+// Overview screen: user-level counters plus the project table.
 import React, { useEffect, useState } from 'react';
 import apiClient from '../api/client';
 import { DashboardSummary, Project } from '../types';

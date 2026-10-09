@@ -1,4 +1,4 @@
-// frontend/src/pages/NewProject.tsx
+// Create-project form; navigates to the new project on success.
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/client';

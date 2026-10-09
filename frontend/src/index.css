@@ -177,16 +177,6 @@
 @layer components {
   /* ===================== surfaces ==================================== */
 
-  .neu-raised {
-    background-color: var(--neu-raised);
-    border: 1px solid var(--neu-border);
-    box-shadow: var(--neu-shadow-out-sm);
-  }
-
-  .neu-flat {
-    background-color: var(--neu-surface);
-  }
-
   .neu-inset {
     background-color: var(--neu-sunken);
     border: 1px solid var(--neu-border);
@@ -230,13 +220,6 @@
     border-color: var(--neu-border-strong);
     box-shadow: var(--neu-shadow-in);
     transform: none;
-  }
-
-  .neu-panel {
-    background-color: var(--neu-surface);
-    border: 1px solid var(--neu-border);
-    border-radius: var(--neu-radius-lg);
-    box-shadow: var(--neu-shadow-out);
   }
 
   /* The brand mark: a solid orange tile with a soft orange glow. */

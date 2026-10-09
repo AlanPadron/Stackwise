@@ -1,4 +1,4 @@
-// frontend/src/api/client.ts
+// Axios instance for the Stackwise API: injects the JWT and centralizes 401 handling.
 import axios from 'axios';
 
 // Use the Vite dev proxy (relative /api/v1) by default; override with VITE_API_URL.

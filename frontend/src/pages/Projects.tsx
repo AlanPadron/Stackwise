@@ -1,4 +1,4 @@
-// frontend/src/pages/Projects.tsx
+// Full project list — the sidebar's "My Projects" destination.
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/client';

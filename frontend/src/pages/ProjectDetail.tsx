@@ -1,4 +1,4 @@
-// frontend/src/pages/ProjectDetail.tsx
+// One project: ZIP upload, analysis history, and the findings of the selected run.
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import apiClient from '../api/client';

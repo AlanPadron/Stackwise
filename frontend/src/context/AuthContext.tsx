@@ -1,4 +1,4 @@
-// frontend/src/context/AuthContext.tsx
+// Session state: the JWT in localStorage, the user it resolves to, login/logout.
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiClient from '../api/client';
 import { User } from '../types';

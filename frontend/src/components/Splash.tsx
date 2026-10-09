@@ -1,4 +1,4 @@
-// frontend/src/components/Splash.tsx
+// Once-per-session transition screen: entry → hold → dissolve, all finite.
 import React, { useState, useEffect } from 'react';
 
 /**

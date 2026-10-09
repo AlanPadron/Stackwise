@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Project } from '../types';
 import { Button } from './ui';
 
+/** Project list shared by the Dashboard and the My Projects screen. */
 export const ProjectsTable: React.FC<{
     projects: Project[];
     emptyMessage?: string;
