@@ -4,29 +4,38 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { SplashContext } from './context/SplashContext';
 import Splash from './components/Splash';
+import { Loader, Switch } from './components/ui';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import NewProject from './pages/NewProject';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { isAuthenticated, isLoading } = useAuth();
-    if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 dark:text-slate-200">Loading...</div>;
+    if (isLoading) return <Loader fullPage caption="Restoring session…" />;
     if (!isAuthenticated) return <Navigate to="/login" replace />;
     return <>{children}</>;
 };
 
+/** Floating tactile switch: the whole theme lives in one control. */
 const ThemeToggle: React.FC = () => {
     const { theme, toggleTheme } = useTheme();
+    const isDark = theme === 'dark';
     return (
-        <button
-            onClick={toggleTheme}
-            className="fixed bottom-6 right-6 p-3 rounded-full bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:scale-110 transition-all z-50"
-            title="Toggle Theme"
-        >
-            {theme === 'light' ? '🌙' : '☀️'}
-        </button>
+        <div className="fixed bottom-6 right-6 z-40 neu-card rounded-neu-lg pl-4 pr-2 py-2 flex items-center gap-3">
+            <span className="text-[0.6875rem] font-bold uppercase tracking-[0.06em] text-faint">
+                Theme
+            </span>
+            <Switch
+                checked={isDark}
+                onChange={toggleTheme}
+                label="Toggle dark mode"
+                thumbOn={<span aria-hidden="true">🌙</span>}
+                thumbOff={<span aria-hidden="true">☀️</span>}
+            />
+        </div>
     );
 };
 
@@ -51,9 +60,12 @@ const AppContent: React.FC = () => {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
                 <Route path="/projects/new" element={<ProtectedRoute><NewProject /></ProtectedRoute>} />
                 <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                {/* Unknown URLs must never render an empty shell. */}
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
             {showSplash && <Splash onComplete={finishSplash} />}
         </SplashContext.Provider>

@@ -1,6 +1,10 @@
 // frontend/src/components/Splash.tsx
 import React, { useState, useEffect } from 'react';
 
+/**
+ * Full-screen transition splash. Two finite passes: the mark is extruded into
+ * place, holds, then the whole layer dissolves away.
+ */
 const Splash: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     const [status, setStatus] = useState<'entry' | 'hold' | 'exit'>('entry');
 
@@ -20,15 +24,19 @@ const Splash: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     }, [onComplete]);
 
     return (
-        <div className={`fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-slate-900 transition-all duration-1000
-            ${status === 'exit' ? 'opacity-0 blur-xl pointer-events-none' : 'opacity-100 blur-0'}`}>
-
-            <div className={`transition-all duration-700 transform
-                ${status === 'entry' ? 'scale-90 opacity-0 blur-md' : 'scale-100 opacity-100 blur-0'}`}>
-
-                <h1 className="text-8xl font-serif font-bold text-slate-900 dark:text-white tracking-tighter select-none">
-                    W
-                </h1>
+        <div
+            className={`fixed inset-0 z-50 grid place-items-center bg-surface
+                transition-all duration-700 ease-neu
+                ${status === 'exit' ? 'opacity-0 blur-xl pointer-events-none' : 'opacity-100 blur-0'}`}
+        >
+            <div
+                className={`flex flex-col items-center gap-6 transition-all duration-700 ease-neu-out
+                    ${status === 'entry' ? 'scale-90 opacity-0' : 'scale-100 opacity-100'}`}
+            >
+                <span className="neu-mark h-24 w-24 rounded-neu-lg text-4xl">W</span>
+                <span className="text-sm font-semibold tracking-[0.3em] uppercase text-faint">
+                    Stackwise
+                </span>
             </div>
         </div>
     );

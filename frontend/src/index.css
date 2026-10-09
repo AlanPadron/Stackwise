@@ -2,11 +2,798 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* =====================================================================
+   Stackwise — Neumorphic design system
+   ---------------------------------------------------------------------
+   Single source of truth for the visual language. Everything the UI
+   renders (surfaces, depth, radii, motion, semantic colours) resolves to
+   a token declared in this file, so re-styling the app is a token edit
+   here instead of a sweep through the JSX.
+
+     1. Tokens ............... :root (light) / .dark (dark)  [base layer]
+     2. Composed depth ....... --neu-shadow-*                [base layer]
+     3. Reusable looks ....... .neu-*                        [components]
+     4. Finite motion ........ .neu-enter* / .neu-stagger     [components]
+
+   Depth model: every element is carved out of, or extruded from, the
+   same surface. Only the two shadow colours flip between themes.
+   ===================================================================== */
+
+@layer base {
+  :root {
+    /* --- surfaces (warm neutral so the orange sits naturally) ------- */
+    --neu-bg: #eae7e4;
+    --neu-surface: #eae7e4;
+    --neu-raised: #f0edeb;
+    --neu-sunken: #e3e0dd;
+
+    /* --- borders: the identity accent, kept as hairlines ------------ */
+    --neu-hairline: rgba(194, 65, 12, 0.22);
+    --neu-border: rgba(194, 65, 12, 0.2);
+    --neu-border-strong: rgba(194, 65, 12, 0.45);
+
+    /* --- ambient wash (static decorative backdrop) ------------------ */
+    --neu-ambient-a: rgba(234, 88, 12, 0.07);
+    --neu-ambient-b: rgba(234, 88, 12, 0.035);
+
+    /* --- text ------------------------------------------------------- */
+    --neu-text: #3a3733;
+    --neu-text-muted: #6f6862;
+    --neu-text-faint: #a49c96;
+
+    /* --- accent + semantics ----------------------------------------- */
+    --neu-accent: #c2410c;
+    --neu-accent-hover: #9a3412;
+    --neu-accent-soft: rgba(234, 88, 12, 0.16);
+    --neu-on-accent: #ffffff;
+    --neu-danger: #c9414f;
+    --neu-danger-soft: rgba(201, 65, 79, 0.14);
+    --neu-warning: #a16207;
+    --neu-warning-soft: rgba(161, 98, 7, 0.16);
+    --neu-success: #1f8a5b;
+    --neu-success-soft: rgba(31, 138, 91, 0.14);
+    --neu-info: #2f6ea8;
+    --neu-info-soft: rgba(47, 110, 168, 0.14);
+
+    /* --- extrusion colours (the depth knob that flips per theme) ---- */
+    --neu-shadow-dark: rgba(176, 165, 156, 0.62);
+    --neu-shadow-light: rgba(255, 253, 250, 0.95);
+
+    /* --- depth ------------------------------------------------------ */
+    --neu-offset-sm: 3px;
+    --neu-blur-sm: 8px;
+    --neu-offset: 5px;
+    --neu-blur: 12px;
+    --neu-offset-lg: 9px;
+    --neu-blur-lg: 22px;
+
+    /* --- geometry --------------------------------------------------- */
+    --neu-radius-sm: 12px;
+    --neu-radius: 18px;
+    --neu-radius-lg: 26px;
+    --neu-radius-full: 999px;
+
+    /* --- motion (every animation below runs a finite number of times) */
+    --neu-t-fast: 140ms;
+    --neu-t: 220ms;
+    --neu-t-slow: 400ms;
+    --neu-ease: cubic-bezier(0.32, 0.72, 0, 1);
+    --neu-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* --- typography ------------------------------------------------- */
+    --neu-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    --neu-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+      'Liberation Mono', monospace;
+
+    /* --- composed depth (derived; change --neu-offset* instead) ----- */
+    --neu-shadow-out-sm: calc(var(--neu-offset-sm)) calc(var(--neu-offset-sm))
+        var(--neu-blur-sm) var(--neu-shadow-dark),
+      calc(-1 * var(--neu-offset-sm)) calc(-1 * var(--neu-offset-sm))
+        var(--neu-blur-sm) var(--neu-shadow-light);
+    --neu-shadow-out: calc(var(--neu-offset)) calc(var(--neu-offset))
+        var(--neu-blur) var(--neu-shadow-dark),
+      calc(-1 * var(--neu-offset)) calc(-1 * var(--neu-offset)) var(--neu-blur)
+        var(--neu-shadow-light);
+    --neu-shadow-out-lg: calc(var(--neu-offset-lg))
+        calc(var(--neu-offset-lg)) var(--neu-blur-lg) var(--neu-shadow-dark),
+      calc(-1 * var(--neu-offset-lg)) calc(-1 * var(--neu-offset-lg))
+        var(--neu-blur-lg) var(--neu-shadow-light);
+    --neu-shadow-in-sm: inset var(--neu-offset-sm) var(--neu-offset-sm)
+        var(--neu-blur-sm) var(--neu-shadow-dark),
+      inset calc(-1 * var(--neu-offset-sm)) calc(-1 * var(--neu-offset-sm))
+        var(--neu-blur-sm) var(--neu-shadow-light);
+    --neu-shadow-in: inset var(--neu-offset) var(--neu-offset) var(--neu-blur)
+        var(--neu-shadow-dark),
+      inset calc(-1 * var(--neu-offset)) calc(-1 * var(--neu-offset))
+        var(--neu-blur) var(--neu-shadow-light);
+  }
+
+  /* Dark theme: warm dark grey. No absolute black, no blue cast. */
+  .dark {
+    color-scheme: dark;
+    --neu-bg: #302e2d;
+    --neu-surface: #302e2d;
+    --neu-raised: #373432;
+    --neu-sunken: #2a2827;
+
+    --neu-hairline: rgba(249, 115, 22, 0.26);
+    --neu-border: rgba(249, 115, 22, 0.24);
+    --neu-border-strong: rgba(249, 115, 22, 0.55);
+
+    --neu-ambient-a: rgba(249, 115, 22, 0.1);
+    --neu-ambient-b: rgba(255, 255, 255, 0.03);
+
+    --neu-text: #eeeae7;
+    --neu-text-muted: #a9a29c;
+    --neu-text-faint: #7b746e;
+
+    --neu-accent: #f97316;
+    --neu-accent-hover: #fb8c3c;
+    --neu-accent-soft: rgba(249, 115, 22, 0.24);
+    --neu-on-accent: #1c1410;
+    --neu-danger: #e0707f;
+    --neu-danger-soft: rgba(224, 112, 127, 0.18);
+    --neu-warning: #eab308;
+    --neu-warning-soft: rgba(234, 179, 8, 0.18);
+    --neu-success: #4bbd8a;
+    --neu-success-soft: rgba(75, 189, 138, 0.18);
+    --neu-info: #7fb0dd;
+    --neu-info-soft: rgba(127, 176, 221, 0.18);
+
+    --neu-shadow-dark: rgba(0, 0, 0, 0.55);
+    --neu-shadow-light: rgba(255, 255, 255, 0.06);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--neu-bg);
+    color: var(--neu-text);
+    font-family: var(--neu-font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color var(--neu-t-slow) var(--neu-ease),
+      color var(--neu-t-slow) var(--neu-ease);
+  }
+
+  ::selection {
+    background: var(--neu-accent-soft);
+    color: var(--neu-text);
+  }
+
+  code,
+  pre,
+  .neu-mono {
+    font-family: var(--neu-font-mono);
+  }
+}
+
+@layer components {
+  /* ===================== surfaces ==================================== */
+
+  .neu-raised {
+    background-color: var(--neu-raised);
+    border: 1px solid var(--neu-border);
+    box-shadow: var(--neu-shadow-out-sm);
+  }
+
+  .neu-flat {
+    background-color: var(--neu-surface);
+  }
+
+  .neu-inset {
+    background-color: var(--neu-sunken);
+    border: 1px solid var(--neu-border);
+    border-radius: var(--neu-radius-sm);
+    box-shadow: var(--neu-shadow-in-sm);
+  }
+
+  .neu-card {
+    background-color: var(--neu-raised);
+    border: 1px solid var(--neu-border);
+    border-radius: var(--neu-radius);
+    box-shadow: var(--neu-shadow-out);
+    transition: box-shadow var(--neu-t) var(--neu-ease),
+      transform var(--neu-t) var(--neu-ease),
+      background-color var(--neu-t) var(--neu-ease),
+      border-color var(--neu-t) var(--neu-ease);
+  }
+
+  .neu-card--interactive {
+    cursor: pointer;
+  }
+
+  .neu-card--interactive:hover {
+    border-color: var(--neu-border-strong);
+    box-shadow: var(--neu-shadow-out-lg);
+    transform: translateY(-2px);
+  }
+
+  /* Pressed look — used for the selected item of a set. */
+  .neu-card--active,
+  .neu-card--interactive:active {
+    background-color: var(--neu-sunken);
+    border-color: var(--neu-border-strong);
+    box-shadow: var(--neu-shadow-in);
+    transform: translateY(0);
+  }
+
+  /* A selected card stays pressed, it does not float on hover. */
+  .neu-card--interactive.neu-card--active:hover {
+    background-color: var(--neu-sunken);
+    border-color: var(--neu-border-strong);
+    box-shadow: var(--neu-shadow-in);
+    transform: none;
+  }
+
+  .neu-panel {
+    background-color: var(--neu-surface);
+    border: 1px solid var(--neu-border);
+    border-radius: var(--neu-radius-lg);
+    box-shadow: var(--neu-shadow-out);
+  }
+
+  /* The brand mark: a solid orange tile with a soft orange glow. */
+  .neu-mark {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    flex: none;
+    border-radius: var(--neu-radius-sm);
+    border: 1px solid var(--neu-border-strong);
+    background-color: var(--neu-accent);
+    color: var(--neu-on-accent);
+    box-shadow: var(--neu-shadow-out-sm),
+      0 8px 18px -8px var(--neu-accent);
+    font-weight: 800;
+    font-size: 1.25rem;
+    line-height: 1;
+    user-select: none;
+  }
+
+  .neu-sidebar {
+    background-color: var(--neu-surface);
+    border-right: 1px solid var(--neu-hairline);
+  }
+
+  .neu-divider {
+    height: 1px;
+    border: 0;
+    background-color: var(--neu-hairline);
+  }
+
+  /* Static decorative wash — no animation on purpose. */
+  .neu-ambient {
+    background-image: radial-gradient(
+        120% 90% at 12% 0%,
+        var(--neu-ambient-a),
+        transparent 60%
+      ),
+      radial-gradient(
+        110% 80% at 100% 100%,
+        var(--neu-ambient-b),
+        transparent 55%
+      );
+  }
+
+  /* ===================== buttons ===================================== */
+
+  .neu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid var(--neu-border);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--neu-radius-sm);
+    color: var(--neu-text);
+    background-color: var(--neu-raised);
+    box-shadow: var(--neu-shadow-out-sm);
+    user-select: none;
+    -webkit-user-select: none;
+    transition: box-shadow var(--neu-t-fast) var(--neu-ease),
+      transform var(--neu-t-fast) var(--neu-ease),
+      background-color var(--neu-t-fast) var(--neu-ease),
+      border-color var(--neu-t-fast) var(--neu-ease),
+      color var(--neu-t-fast) var(--neu-ease);
+  }
+
+  .neu-btn:hover:not(:disabled) {
+    box-shadow: var(--neu-shadow-out);
+    transform: translateY(-1px);
+  }
+
+  .neu-btn:active:not(:disabled) {
+    box-shadow: var(--neu-shadow-in-sm);
+    transform: translateY(0) scale(0.985);
+  }
+
+  .neu-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--neu-shadow-out-sm), 0 0 0 3px var(--neu-accent-soft);
+  }
+
+  .neu-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
+    box-shadow: var(--neu-shadow-out-sm);
+  }
+
+  .neu-btn--primary {
+    border-color: var(--neu-border-strong);
+    background-color: var(--neu-accent);
+    color: var(--neu-on-accent);
+    box-shadow: var(--neu-shadow-out-sm),
+      0 6px 18px -6px var(--neu-accent);
+  }
+
+  .neu-btn--primary:hover:not(:disabled) {
+    background-color: var(--neu-accent-hover);
+    box-shadow: var(--neu-shadow-out), 0 10px 24px -8px var(--neu-accent);
+  }
+
+  .neu-btn--primary:active:not(:disabled) {
+    box-shadow: var(--neu-shadow-in-sm), 0 2px 8px -4px var(--neu-accent);
+  }
+
+  .neu-btn--primary:focus-visible {
+    box-shadow: var(--neu-shadow-out-sm), 0 0 0 3px var(--neu-accent);
+  }
+
+  .neu-btn--danger {
+    color: var(--neu-danger);
+  }
+
+  .neu-btn--danger:hover:not(:disabled) {
+    background-color: var(--neu-danger-soft);
+  }
+
+  .neu-btn--ghost {
+    border-color: transparent;
+    background-color: transparent;
+    box-shadow: none;
+    color: var(--neu-text-muted);
+  }
+
+  .neu-btn--ghost:hover:not(:disabled) {
+    border-color: var(--neu-border);
+    background-color: var(--neu-raised);
+    color: var(--neu-text);
+    box-shadow: var(--neu-shadow-out-sm);
+    transform: translateY(-1px);
+  }
+
+  .neu-btn--ghost:active:not(:disabled) {
+    box-shadow: var(--neu-shadow-in-sm);
+  }
+
+  .neu-btn--sm {
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+  }
+
+  .neu-btn--lg {
+    padding: 0.9rem 1.5rem;
+    font-size: 0.9375rem;
+  }
+
+  .neu-btn--icon {
+    padding: 0.7rem;
+    border-radius: var(--neu-radius-full);
+  }
+
+  .neu-btn--block {
+    width: 100%;
+  }
+
+  .neu-btn__spinner {
+    width: 0.85em;
+    height: 0.85em;
+    flex: none;
+    border-radius: var(--neu-radius-full);
+    background-color: currentColor;
+    animation: neu-breathe 1.2s var(--neu-ease) infinite;
+  }
+
+  /* ===================== form controls =============================== */
+
+  .neu-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--neu-text-muted);
+  }
+
+  .neu-input {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--neu-border);
+    padding: 0.75rem 1rem;
+    font: inherit;
+    font-size: 0.9375rem;
+    color: var(--neu-text);
+    caret-color: var(--neu-accent);
+    background-color: var(--neu-sunken);
+    border-radius: var(--neu-radius-sm);
+    box-shadow: var(--neu-shadow-in-sm);
+    transition: box-shadow var(--neu-t) var(--neu-ease),
+      border-color var(--neu-t) var(--neu-ease);
+  }
+
+  .neu-input::placeholder {
+    color: var(--neu-text-faint);
+  }
+
+  .neu-input:focus {
+    outline: none;
+    border-color: var(--neu-border-strong);
+    box-shadow: var(--neu-shadow-in-sm), 0 0 0 3px var(--neu-accent-soft);
+  }
+
+  .neu-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .neu-input--textarea {
+    min-height: 8rem;
+    resize: vertical;
+  }
+
+  .neu-input--error {
+    box-shadow: var(--neu-shadow-in-sm), 0 0 0 3px var(--neu-danger-soft);
+  }
+
+  .neu-hint {
+    font-size: 0.75rem;
+    color: var(--neu-text-faint);
+  }
+
+  .neu-hint--error {
+    color: var(--neu-danger);
+    font-weight: 500;
+  }
+
+  /* ===================== switch (tactile toggle) ===================== */
+
+  .neu-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    width: 3.5rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--neu-border);
+    cursor: pointer;
+    border-radius: var(--neu-radius-full);
+    background-color: var(--neu-sunken);
+    box-shadow: var(--neu-shadow-in-sm);
+    transition: background-color var(--neu-t) var(--neu-ease),
+      border-color var(--neu-t) var(--neu-ease),
+      box-shadow var(--neu-t) var(--neu-ease);
+  }
+
+  .neu-switch:focus-visible {
+    outline: none;
+    box-shadow: var(--neu-shadow-in-sm), 0 0 0 3px var(--neu-accent-soft);
+  }
+
+  .neu-switch__thumb {
+    position: absolute;
+    top: 50%;
+    left: 0.25rem;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: var(--neu-radius-full);
+    background-color: var(--neu-raised);
+    box-shadow: var(--neu-shadow-out-sm);
+    font-size: 0.7rem;
+    line-height: 1;
+    transform: translateY(-50%);
+    transition: transform var(--neu-t) var(--neu-ease-out),
+      box-shadow var(--neu-t) var(--neu-ease);
+  }
+
+  .neu-switch[aria-checked='true'] {
+    background-color: var(--neu-accent-soft);
+    border-color: var(--neu-border-strong);
+    box-shadow: var(--neu-shadow-in-sm);
+  }
+
+  .neu-switch[aria-checked='true'] .neu-switch__thumb {
+    transform: translate(1.5rem, -50%);
+  }
+
+  .neu-switch:active .neu-switch__thumb {
+    box-shadow: var(--neu-shadow-out);
+  }
+
+  /* ===================== navigation ================================== */
+
+  .neu-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    border: 1px solid transparent;
+    width: 100%;
+    border-radius: var(--neu-radius-sm);
+    background-color: transparent;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--neu-text-muted);
+    text-decoration: none;
+    text-align: left;
+    cursor: pointer;
+    transition: box-shadow var(--neu-t) var(--neu-ease),
+      background-color var(--neu-t) var(--neu-ease),
+      border-color var(--neu-t) var(--neu-ease),
+      color var(--neu-t-fast) var(--neu-ease);
+  }
+
+  .neu-nav-item:hover {
+    color: var(--neu-text);
+    background-color: var(--neu-raised);
+    border-color: var(--neu-border);
+    box-shadow: var(--neu-shadow-out-sm);
+  }
+
+  .neu-nav-item:focus-visible {
+    outline: none;
+    box-shadow: var(--neu-shadow-out-sm), 0 0 0 3px var(--neu-accent-soft);
+  }
+
+  .neu-nav-item--active {
+    color: var(--neu-accent);
+    background-color: var(--neu-sunken);
+    border-color: var(--neu-border-strong);
+    box-shadow: var(--neu-shadow-in-sm);
+    font-weight: 600;
+  }
+
+  /* ===================== badges ====================================== */
+
+  .neu-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: var(--neu-radius-full);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--neu-text-muted);
+    background-color: var(--neu-sunken);
+    box-shadow: var(--neu-shadow-in-sm);
+  }
+
+  .neu-badge--accent {
+    color: var(--neu-accent);
+    background-color: var(--neu-accent-soft);
+    box-shadow: none;
+  }
+
+  .neu-badge--danger {
+    color: var(--neu-danger);
+    background-color: var(--neu-danger-soft);
+    box-shadow: none;
+  }
+
+  .neu-badge--warning {
+    color: var(--neu-warning);
+    background-color: var(--neu-warning-soft);
+    box-shadow: none;
+  }
+
+  .neu-badge--success {
+    color: var(--neu-success);
+    background-color: var(--neu-success-soft);
+    box-shadow: none;
+  }
+
+  .neu-badge--info {
+    color: var(--neu-info);
+    background-color: var(--neu-info-soft);
+    box-shadow: none;
+  }
+
+  /* ===================== table ======================================= */
+
+  .neu-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+  }
+
+  .neu-table thead th {
+    padding: 0.9rem 1.5rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--neu-text-faint);
+    background-color: var(--neu-sunken);
+    border-bottom: 1px solid var(--neu-border);
+  }
+
+  .neu-table tbody td {
+    padding: 1rem 1.5rem;
+    color: var(--neu-text-muted);
+  }
+
+  .neu-table tbody tr {
+    transition: background-color var(--neu-t-fast) var(--neu-ease);
+  }
+
+  .neu-table tbody tr:hover {
+    background-color: var(--neu-sunken);
+  }
+
+  .neu-table tbody tr + tr td {
+    border-top: 1px solid var(--neu-hairline);
+  }
+
+  /* ===================== scrolling =================================== */
+
+  .neu-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--neu-shadow-dark) transparent;
+  }
+
+  .neu-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .neu-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .neu-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--neu-shadow-dark);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: var(--neu-radius-full);
+  }
+
+  /* ===================== finite motion =============================== */
+
+  @keyframes neu-rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes neu-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes neu-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Only looping animation in the system: a functional loading cue. */
+  @keyframes neu-breathe {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.88);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .neu-enter {
+    animation: neu-rise var(--neu-t-slow) var(--neu-ease-out) both;
+  }
+
+  .neu-enter-fade {
+    animation: neu-fade var(--neu-t-slow) var(--neu-ease-out) both;
+  }
+
+  .neu-enter-pop {
+    animation: neu-pop var(--neu-t-slow) var(--neu-ease-out) both;
+  }
+
+  /* Sequential entrance without per-element inline styles. */
+  .neu-stagger > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .neu-stagger > *:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .neu-stagger > *:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  .neu-stagger > *:nth-child(4) {
+    animation-delay: 180ms;
+  }
+  .neu-stagger > *:nth-child(5) {
+    animation-delay: 240ms;
+  }
+  .neu-stagger > *:nth-child(6) {
+    animation-delay: 300ms;
+  }
+  .neu-stagger > *:nth-child(7) {
+    animation-delay: 360ms;
+  }
+  .neu-stagger > *:nth-child(8) {
+    animation-delay: 420ms;
+  }
+
+  .neu-loader {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .neu-loader span {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: var(--neu-radius-full);
+    background-color: var(--neu-accent);
+    animation: neu-breathe 1.4s var(--neu-ease) infinite;
+  }
+
+  .neu-loader span:nth-child(2) {
+    animation-delay: 160ms;
+  }
+
+  .neu-loader span:nth-child(3) {
+    animation-delay: 320ms;
+  }
+}
+
+/* Respect the OS motion preference: drop decorative motion entirely. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

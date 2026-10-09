@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/client';
+import { AppSidebar } from '../components/AppSidebar';
+import { AppShell, Button, Card, Input, Textarea } from '../components/ui';
 
 const NewProject: React.FC = () => {
     const [name, setName] = useState('');
@@ -23,66 +25,41 @@ const NewProject: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex transition-colors duration-500">
-            <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col">
-                <div className="p-6">
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Stackwise</h1>
-                </div>
-                <nav className="flex-1 px-4 space-y-1">
-                    <a href="/dashboard" className="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-sm transition-colors">
-                        Dashboard
-                    </a>
-                </nav>
-            </aside>
-            <main className="flex-1 p-8">
-                <div className="max-w-2xl mx-auto">
-                    <header className="mb-8">
-                        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Create Project</h2>
-                        <p className="text-slate-500 dark:text-slate-400">Set up a new repository for analysis</p>
-                    </header>
-                    <div className="bg-white dark:bg-slate-800 p-8 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project Name</label>
-                                <input
-                                    type="text"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-transparent dark:text-white"
-                                    placeholder="e.g. My Awesome Python App"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description (Optional)</label>
-                                <textarea
-                                    value={description}
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-32 bg-transparent dark:text-white"
-                                    placeholder="What is this project about?"
-                                />
-                            </div>
-                            <div className="flex justify-end gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('/dashboard')}
-                                    className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-sm transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-sm transition-colors disabled:opacity-50"
-                                >
-                                    {loading ? 'Creating...' : 'Create Project'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </main>
-        </div>
+        <AppShell sidebar={<AppSidebar active="projects" />}>
+            <div className="max-w-2xl mx-auto neu-enter">
+                <header className="mb-8">
+                    <h2 className="text-3xl font-bold tracking-tight">Create Project</h2>
+                    <p className="text-sm text-muted mt-1">Set up a new repository for analysis</p>
+                </header>
+
+                <Card className="p-8">
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <Input
+                            label="Project Name"
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="e.g. My Awesome Python App"
+                            required
+                        />
+                        <Textarea
+                            label="Description (Optional)"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            placeholder="What is this project about?"
+                        />
+                        <div className="flex justify-end gap-3 pt-2">
+                            <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" variant="primary" loading={loading}>
+                                {loading ? 'Creating…' : 'Create Project'}
+                            </Button>
+                        </div>
+                    </form>
+                </Card>
+            </div>
+        </AppShell>
     );
 };
 

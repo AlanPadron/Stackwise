@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import apiClient, { getApiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useSplash } from '../context/SplashContext';
+import { Button, Card, Input } from '../components/ui';
 
 const Register: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -38,65 +39,59 @@ const Register: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4 relative overflow-hidden transition-colors duration-500">
-            {/* Animated Background Waves */}
-            <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-                <div className="absolute -top-[10%] -left-[10%] w-[60%] h-[60%] bg-indigo-200 dark:bg-indigo-900/20 rounded-full blur-[120px] animate-pulse duration-7000"></div>
-                <div className="absolute top-[20%] -right-[10%] w-[50%] h-[50%] bg-blue-200 dark:bg-blue-900/20 rounded-full blur-[120px] animate-pulse duration-5000"></div>
-                <div className="absolute -bottom-[10%] left-[20%] w-[50%] h-[50%] bg-purple-200 dark:bg-purple-900/20 rounded-full blur-[120px] animate-pulse duration-6000"></div>
-            </div>
+        <div className="min-h-screen grid place-items-center p-6 neu-ambient">
+            <Card className="w-full max-w-md p-8 md:p-10 neu-enter">
+                <header className="flex flex-col items-center text-center mb-8">
+                    <span className="neu-mark mb-5">W</span>
+                    <h1 className="text-2xl font-bold tracking-tight">Create account</h1>
+                    <p className="text-sm text-muted mt-1.5">Get started with Stackwise analysis</p>
+                </header>
 
-            <div className="max-w-md w-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-md shadow-2xl border border-slate-200 dark:border-slate-700 p-8 z-10 transition-all duration-500">
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">Create account</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Get started with Stackwise analysis</p>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="group">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 transition-colors">Email</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-transparent dark:text-white"
-                            required
-                        />
-                    </div>
-                    <div className="group">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 transition-colors">Password</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-transparent dark:text-white"
-                            required
-                        />
-                    </div>
-                    <div className="group">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 transition-colors">Confirm Password</label>
-                        <input
-                            type="password"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-transparent dark:text-white"
-                            required
-                        />
-                    </div>
-                    {error && <div className="text-red-500 dark:text-red-400 text-sm text-center font-medium animate-bounce">{error}</div>}
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-sm transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-indigo-500/30"
-                    >
-                        {loading ? 'Creating account...' : 'Register'}
-                    </button>
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <Input
+                        label="Email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        autoComplete="email"
+                        required
+                    />
+                    <Input
+                        label="Password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="new-password"
+                        hint="At least 8 characters"
+                        required
+                    />
+                    <Input
+                        label="Confirm Password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        autoComplete="new-password"
+                        required
+                    />
+
+                    {error && (
+                        <p className="neu-hint neu-hint--error text-center neu-enter-pop" role="alert">
+                            {error}
+                        </p>
+                    )}
+
+                    <Button type="submit" variant="primary" size="lg" block loading={loading}>
+                        {loading ? 'Creating account…' : 'Register'}
+                    </Button>
                 </form>
-                <div className="mt-6 text-center">
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Already have an account? <a href="/login" className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium transition-colors">Login</a>
-                    </p>
-                </div>
-            </div>
+
+                <p className="mt-6 text-center text-sm text-muted">
+                    Already have an account?{' '}
+                    <Link to="/login" className="font-semibold text-accent no-underline hover:underline">
+                        Login
+                    </Link>
+                </p>
+            </Card>
         </div>
     );
 };
