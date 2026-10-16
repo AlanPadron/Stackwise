@@ -114,6 +114,21 @@ export const MailIcon: React.FC<IconProps> = (props) => (
     </Svg>
 );
 
+/** Shows the mascot is on; paired with EyeOffIcon on the same button. */
+export const EyeIcon: React.FC<IconProps> = (props) => (
+    <Svg {...props}>
+        <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
+        <circle cx="12" cy="12" r="2.6" />
+    </Svg>
+);
+
+export const EyeOffIcon: React.FC<IconProps> = (props) => (
+    <Svg {...props}>
+        <path d="M4 5l16 14" />
+        <path d="M9.5 6.4A9.6 9.6 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-2.6 3.3M6.4 8.2A17 17 0 0 0 2 12s3.6 6 10 6a9.4 9.4 0 0 0 3.4-.6" />
+    </Svg>
+);
+
 /** Stands in for the development-only mock provider. */
 export const TerminalIcon: React.FC<IconProps> = (props) => (
     <Svg {...props}>

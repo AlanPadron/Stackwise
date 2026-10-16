@@ -1,30 +1,47 @@
 """The findings agent: can it run, and one chat turn.
 
-Both endpoints require a session — the agent reads the caller's own findings —
-and the chat endpoint is rate limited per user, because one request can occupy
+Three endpoints require a session — the agent reads the caller's own findings —
+and both chat endpoints are rate limited per user, because one request can occupy
 the server's CPU for as long as the model takes to answer.
 
-When the model is not installed the chat answers **503 with the reason**, never a
+Two transports for the same answer: `POST /agent/chat` returns it whole, and
+`POST /agent/chat/stream` returns it as server-sent events so the screen can show
+the text arriving. The streamed one is what the SPA uses; the whole-answer one
+stays because it is the simpler contract for anything that is not a browser.
+
+When the model cannot run the chat answers **503 with the reason**, never a
 generated explanation: the SPA shows the install hint instead of pretending an
-answer came from the model.
+answer came from the model. That is true before the stream starts; a failure
+*inside* a stream cannot change the status code anymore, so it is delivered as an
+`error` event carrying the same sanitised reason.
 """
 
+import json
 import uuid
-from typing import Literal, Optional
+from typing import AsyncIterator, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.backend import AgentBackend, AgentUnavailable, ChatMessage
 from app.agent.registry import resolve_backend
-from app.agent.service import AgentService
-from app.analysis.redact import redact
+from app.agent.service import AgentContext, AgentService
+from app.analysis.redact import redact_with_values
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.ratelimit import agent_chat_limiter
 from app.db.session import get_db
 from app.models.user import User
+
+#: Events carried by `text/event-stream`. `meta` opens the stream (which runtime
+#: answered, and what it was given), `delta` carries text, `done` closes it with
+#: the complete answer, and `error` replaces `done` when generation failed.
+SSE_META = "meta"
+SSE_DELTA = "delta"
+SSE_DONE = "done"
+SSE_ERROR = "error"
 
 router = APIRouter()
 
@@ -117,7 +134,7 @@ async def agent_chat(
         # The reason names a setting or a missing package, never a value.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=redact(str(exc), limit=300),
+            detail=_reason(exc),
         ) from None
 
     return AgentChatResponse(
@@ -130,7 +147,110 @@ async def agent_chat(
     )
 
 
+@router.post(
+    "/chat/stream",
+    responses={
+        200: {
+            "content": {"text/event-stream": {}},
+            "description": "meta, then delta per fragment, then done — or error",
+        },
+        422: {"description": "A conversation the agent cannot use"},
+        429: {"description": "Rate limited"},
+        503: {"description": "The configured agent backend cannot run"},
+    },
+)
+async def agent_chat_stream(
+    payload: AgentChatRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    backend: AgentBackend = Depends(agent_backend),
+) -> StreamingResponse:
+    """Answer the last message as server-sent events, as the model writes it.
+
+    Everything that can fail cleanly — the conversation, the rate limit, an
+    unavailable runtime, the scope — fails *before* the first byte, so the caller
+    still gets a status code and a JSON body it can act on. What happens after
+    that is an `error` event, because by then the status line is long gone.
+    """
+    turns = _validate_turns(payload.messages)
+    enforce_agent_rate_limit(user)
+
+    service = AgentService(db)
+    try:
+        context = await service.prepare(
+            user=user,
+            messages=turns,
+            backend=backend,
+            project_id=payload.project_id,
+            analysis_run_id=payload.analysis_run_id,
+        )
+    except AgentUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=_reason(exc),
+        ) from None
+
+    return StreamingResponse(
+        _event_stream(service, context, backend),
+        media_type="text/event-stream",
+        headers={
+            # A conversation is never cacheable, and a buffering proxy would
+            # defeat the point of streaming it.
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def _event_stream(
+    service: AgentService, context: AgentContext, backend: AgentBackend
+) -> AsyncIterator[str]:
+    """`meta` → a `delta` per fragment → `done`, or `error` instead of the end."""
+    yield _frame(
+        SSE_META,
+        {
+            "backend": context.backend_name,
+            "model": context.model,
+            "findings_used": context.findings_used,
+            "truncated": context.truncated,
+            "analysis_run_id": (
+                str(context.analysis_run_id) if context.analysis_run_id else None
+            ),
+        },
+    )
+
+    parts: list[str] = []
+    try:
+        async for delta in service.stream(context=context, backend=backend):
+            parts.append(delta)
+            yield _frame(SSE_DELTA, {"text": delta})
+    except AgentUnavailable as exc:
+        # The client keeps the fragments it already has; the reason names a
+        # setting or a timeout, never a value.
+        yield _frame(SSE_ERROR, {"detail": _reason(exc)})
+        return
+
+    yield _frame(SSE_DONE, {"reply": "".join(parts)})
+
+
+def _frame(event: str, data: dict) -> str:
+    """One server-sent event. `ensure_ascii=False` keeps UTF-8 text readable."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
 # --- helpers -----------------------------------------------------------------
+
+
+def _reason(exc: AgentUnavailable) -> str:
+    """The operator-facing reason for a failure, with our own secrets removed.
+
+    `redact()` recognises credentials by shape; a 40-character API token has no
+    shape to recognise, so the values this process holds are scrubbed by value
+    too. A reason is read by an operator, never by the model.
+    """
+    return redact_with_values(
+        str(exc), (settings.CLOUDFLARE_API_TOKEN, settings.SECRET_KEY), limit=300
+    )
 
 
 def enforce_agent_rate_limit(user: User) -> None:

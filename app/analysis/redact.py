@@ -8,9 +8,13 @@ goes through `redact()`.
 
 import json
 import re
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 _REDACTION = "<redacted>"
+
+#: Below this, a "secret" is too short to scrub safely: replacing it would cut
+#: arbitrary words out of a message, and nothing that short is a credential.
+MIN_SECRET_LENGTH = 8
 
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # our own database URLs (with or without credentials)
@@ -45,6 +49,26 @@ def redact(value: Any, *, limit: int = 2000) -> str:
     if len(text) > limit:
         text = text[: limit - 1] + "…"
     return text
+
+
+def redact_with_values(
+    value: Any, values: Iterable[Optional[str]], *, limit: int = 2000
+) -> str:
+    """`redact()`, plus a verbatim scrub of secrets given by their holder.
+
+    Not every credential has a recognisable shape: a Cloudflare API token is 40
+    unremarkable characters, so no pattern can find it. The one place that *can*
+    remove it is whatever read the value in the first place, which is why this
+    takes them as an argument instead of guessing.
+
+    Short values are ignored: a two-character "secret" would redact half the
+    message, and anything that short is not a credential worth holding.
+    """
+    text = "" if value is None else (value if isinstance(value, str) else str(value))
+    for secret in values:
+        if secret and len(secret) >= MIN_SECRET_LENGTH:
+            text = text.replace(secret, _REDACTION)
+    return redact(text, limit=limit)
 
 
 def is_jsonable(value: Any, *, depth: int = 6) -> bool:

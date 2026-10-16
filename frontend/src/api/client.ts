@@ -38,11 +38,14 @@ apiClient.interceptors.response.use(
 
 export default apiClient;
 
-// Extracts a human-readable message from an API/axios error without `any`.
-export const getApiErrorMessage = (error: unknown, fallback: string): string => {
-    if (!axios.isAxiosError(error)) return fallback;
-    const data: unknown = error.response?.data;
+/**
+ * The human-readable message of a failed API body (FastAPI's `detail`), or the
+ * fallback. Shared with the streamed agent call, which uses `fetch` and so never
+ * sees an axios error.
+ */
+export const messageFromBody = (data: unknown, fallback: string): string => {
     if (data && typeof data === 'object' && 'detail' in data) {
+        // `in` narrows the property to `unknown`, so it is read and then checked.
         const detail: unknown = data.detail;
         if (typeof detail === 'string') return detail;
         if (Array.isArray(detail) && detail.length > 0) {
@@ -53,4 +56,10 @@ export const getApiErrorMessage = (error: unknown, fallback: string): string => 
         }
     }
     return fallback;
+};
+
+// Extracts a human-readable message from an API/axios error without `any`.
+export const getApiErrorMessage = (error: unknown, fallback: string): string => {
+    if (!axios.isAxiosError(error)) return fallback;
+    return messageFromBody(error.response?.data, fallback);
 };

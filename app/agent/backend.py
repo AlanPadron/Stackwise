@@ -7,7 +7,7 @@ stay untouched.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Protocol, Sequence, runtime_checkable
+from typing import AsyncIterator, Optional, Protocol, Sequence, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,43 @@ class AgentBackend(Protocol):
         self, messages: Sequence[ChatMessage], *, max_new_tokens: int
     ) -> str:
         """Answer the conversation, or raise `AgentUnavailable`."""
+
+
+@runtime_checkable
+class StreamingAgentBackend(Protocol):
+    """An `AgentBackend` that can also hand the answer back as it is produced.
+
+    Optional on purpose: streamed text is what makes "the model is writing" a
+    real state rather than an animation, but a runtime that only speaks
+    request/response should not have to fake it. `stream_answer()` below is what
+    callers use, so they never branch on which kind of backend they hold.
+    """
+
+    def stream(
+        self, messages: Sequence[ChatMessage], *, max_new_tokens: int
+    ) -> AsyncIterator[str]:
+        """Yield the answer in fragments, or raise `AgentUnavailable`."""
+
+
+async def stream_answer(
+    backend: AgentBackend,
+    messages: Sequence[ChatMessage],
+    *,
+    max_new_tokens: int,
+) -> AsyncIterator[str]:
+    """One answer as a sequence of fragments, from whichever path exists.
+
+    A backend with `stream()` streams it. One without yields its whole answer as
+    a single fragment, because that is all a request/response runtime can
+    honestly report — the caller still gets a sequence, and still gets it before
+    the request ends.
+    """
+    stream = getattr(backend, "stream", None)
+    if stream is None:
+        yield await backend.complete(messages, max_new_tokens=max_new_tokens)
+        return
+    async for delta in stream(messages, max_new_tokens=max_new_tokens):
+        yield delta
 
 
 @dataclass(frozen=True)

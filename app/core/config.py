@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     # Release tag: keep in sync with `frontend/package.json` and
     # `frontend/src/config.ts` (the version badge).
-    APP_VERSION: str = "1.5.0-alpha"
+    APP_VERSION: str = "1.6.0-alpha"
 
     # Deployment database. Present for docker-compose/Vercel parity; the async
     # engine below connects through `SQLALCHEMY_URL` (see app/db/session.py).

@@ -21,8 +21,9 @@ unauthenticated POST returns Cloudflare's own `{"success": false, "errors":
     → {"result": {"response": "..."}, "success": true, "errors": [], ...}
 """
 
+import json
 import re
-from typing import Any, Optional, Sequence
+from typing import Any, AsyncIterator, Optional, Sequence
 from urllib.parse import quote
 
 import httpx
@@ -120,19 +121,6 @@ class CloudflareBackend:
         if reason is not None:
             raise AgentUnavailable(reason)
 
-        payload: dict[str, Any] = {
-            "messages": [
-                {"role": message.role, "content": message.content}
-                for message in messages
-            ],
-            "max_tokens": max_new_tokens,
-            "temperature": self._temperature,
-        }
-        headers = {
-            "Authorization": f"Bearer {self._api_token}",
-            "Content-Type": "application/json",
-        }
-
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -140,7 +128,9 @@ class CloudflareBackend:
                 follow_redirects=False,
             ) as client:
                 response = await client.post(
-                    self._endpoint(), json=payload, headers=headers
+                    self._endpoint(),
+                    json=self._payload(messages, max_new_tokens),
+                    headers=self._headers(),
                 )
         except httpx.HTTPError as exc:
             # The exception's own text can carry the URL, never the header; the
@@ -152,6 +142,96 @@ class CloudflareBackend:
             ) from None
 
         return self._answer(response)
+
+    def _payload(
+        self, messages: Sequence[ChatMessage], max_new_tokens: int, *, stream: bool = False
+    ) -> dict[str, Any]:
+        """The request body both call shapes share."""
+        payload: dict[str, Any] = {
+            "messages": [
+                {"role": message.role, "content": message.content}
+                for message in messages
+            ],
+            "max_tokens": max_new_tokens,
+            "temperature": self._temperature,
+        }
+        if stream:
+            payload["stream"] = True
+        return payload
+
+    def _headers(self, *, stream: bool = False) -> dict[str, str]:
+        """`Authorization` is the only place the token ever appears."""
+        headers = {
+            "Authorization": f"Bearer {self._api_token}",
+            "Content-Type": "application/json",
+        }
+        if stream:
+            headers["Accept"] = "text/event-stream"
+        return headers
+
+    async def stream(
+        self, messages: Sequence[ChatMessage], *, max_new_tokens: int
+    ) -> AsyncIterator[str]:
+        """The answer in fragments, from Cloudflare's event stream.
+
+        The same request as `complete()` with `"stream": true`, which switches the
+        response to `text/event-stream`; each frame is `data: {"response": "…"}`
+        and the last one is `data: [DONE]` (Cloudflare's own documented shape).
+        Frames that carry no text — comments, keep-alives, anything unparsable —
+        are skipped rather than treated as failures, so a surprise in the stream
+        costs a fragment, not the answer.
+
+        Closing the generator closes the connection, so a client that gives up
+        cancels the upstream generation too.
+        """
+        reason = self.unavailable_reason()
+        if reason is not None:
+            raise AgentUnavailable(reason)
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                transport=self._transport,
+                follow_redirects=False,
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    self._endpoint(),
+                    json=self._payload(messages, max_new_tokens, stream=True),
+                    headers=self._headers(stream=True),
+                ) as response:
+                    if response.status_code >= 400:
+                        # The failure is a JSON envelope, not a stream: read it so
+                        # the sanitised reason matches the non-streaming path.
+                        await response.aread()
+                        self._check_status(response)
+                        raise AgentUnavailable(
+                            "Cloudflare Workers AI refused to stream this request"
+                        )
+
+                    async for delta in self._frames(response):
+                        yield delta
+        except httpx.HTTPError as exc:
+            raise AgentUnavailable(
+                "Cloudflare Workers AI could not be reached "
+                f"({type(exc).__name__})"
+            ) from None
+
+    async def _frames(self, response: httpx.Response) -> AsyncIterator[str]:
+        """The text carried by each server-sent event of a stream."""
+        async for line in response.aiter_lines():
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if not data or data == "[DONE]":
+                continue
+            try:
+                frame = json.loads(data)
+            except ValueError:
+                continue
+            text = frame.get("response") if isinstance(frame, dict) else None
+            if isinstance(text, str) and text:
+                yield text
 
     def _endpoint(self) -> str:
         """The one URL this backend ever posts to.
@@ -173,22 +253,7 @@ class CloudflareBackend:
 
     def _answer(self, response: httpx.Response) -> str:
         """The model's text, or `AgentUnavailable` with a sanitised reason."""
-        if response.status_code in (401, 403):
-            # Never quote the body here: this is the one branch an operator could
-            # hit with a malformed token still in hand.
-            raise AgentUnavailable(
-                "Cloudflare Workers AI rejected the credentials: check "
-                "CLOUDFLARE_API_TOKEN (it needs the `Workers AI - Read` permission)"
-            )
-        if response.status_code == 429:
-            raise AgentUnavailable(
-                "Cloudflare Workers AI is rate limiting this account; try again shortly"
-            )
-        if response.status_code >= 400:
-            raise AgentUnavailable(
-                f"Cloudflare Workers AI answered HTTP {response.status_code}"
-                f"{self._detail(response)}"
-            )
+        self._check_status(response)
 
         try:
             body = response.json()
@@ -214,6 +279,30 @@ class CloudflareBackend:
                 "Cloudflare Workers AI returned no text for this request"
             )
         return answer
+
+    def _check_status(self, response: httpx.Response) -> None:
+        """Raise the sanitised reason for a failed response; return on success.
+
+        Shared by the two call shapes: the whole-answer request reads the body
+        before calling this, a streamed one has to read it first because the
+        body is the event stream.
+        """
+        if response.status_code == 401 or response.status_code == 403:
+            # Never quote the body here: this is the one branch an operator could
+            # hit with a malformed token still in hand.
+            raise AgentUnavailable(
+                "Cloudflare Workers AI rejected the credentials: check "
+                "CLOUDFLARE_API_TOKEN (it needs the `Workers AI - Read` permission)"
+            )
+        if response.status_code == 429:
+            raise AgentUnavailable(
+                "Cloudflare Workers AI is rate limiting this account; try again shortly"
+            )
+        if response.status_code >= 400:
+            raise AgentUnavailable(
+                f"Cloudflare Workers AI answered HTTP {response.status_code}"
+                f"{self._detail(response)}"
+            )
 
     def _detail(self, response: httpx.Response) -> str:
         text = self._sanitize(response.text)

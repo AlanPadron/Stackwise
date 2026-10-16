@@ -1,10 +1,10 @@
 {
   "project": "StackWise Main",
   "report_version": "1.0",
-  "last_updated": "2026-10-16T12:15:00Z",
+  "last_updated": "2026-10-16T18:40:00Z",
   "overall_status": "completed_with_manual_steps_pending",
-  "current_phase": "verification",
-  "summary": "Auditoria, correccion, integracion y verificacion de la copia local de StackWise Main. El stack real es un backend FastAPI async (SQLAlchemy 2 + Alembic) sobre SQLite por defecto con PostgreSQL/Supabase previsto, un motor de analisis propio (ruff/bandit/radon en subproceso) y un agente de hallazgos detras de una interfaz AgentBackend; el frontend es React 18 + Vite + Tailwind con sistema de tokens propio, i18n EN/ES y ahora PWA instalable y layout movil. Linea base antes de tocar nada: 229 tests en verde; despues: 260 en verde (31 nuevos). Cambios principales: (1) Cloudflare Workers AI integrado como segundo runtime del agente con el modelo de referencia @cf/qwen/qwen2.5-coder-32b-instruct, verificado contra la API real hasta la autenticacion; (2) asyncpg declarado y PRAGMA foreign_keys=ON en SQLite, que corrige filas huerfanas en rollbacks; (3) frontend adaptado a movil (sidebar -> drawer, objetivos tactiles de 44px, safe areas, tablas con scroll interno) y convertido en PWA instalable (manifiesto, iconos, service worker que nunca cachea /api/, aviso de actualizacion y aviso de sin conexion); (4) estados de error honestos en dashboard/proyectos y en la comprobacion de sesion, que antes se tragaban los fallos y mostraban datos vacios o cerraban la sesion; (5) README reescrito como guia real del proyecto, .env.example y docs secundarios actualizados, y este informe. Verificado en navegador real (Chromium headless) el build de produccion: manifiesto e iconos servidos, service worker activado, shell cargada sin conexion, /api nunca cacheada, banner de actualizacion tras simular un despliegue, drawer con foco atrapado, y 320/768/1440 sin desbordamiento horizontal. No se ha hecho git push ni ningun despliegue.",
+  "current_phase": "release_1.6.0-alpha",
+  "summary": "Auditoria, correccion, integracion y verificacion de la copia local de StackWise Main. El stack real es un backend FastAPI async (SQLAlchemy 2 + Alembic) sobre SQLite por defecto con PostgreSQL/Supabase previsto, un motor de analisis propio (ruff/bandit/radon en subproceso) y un agente de hallazgos detras de una interfaz AgentBackend; el frontend es React 18 + Vite + Tailwind con sistema de tokens propio, i18n EN/ES y ahora PWA instalable y layout movil. Linea base antes de tocar nada: 229 tests en verde; despues: 260 en verde (31 nuevos). Cambios principales: (1) Cloudflare Workers AI integrado como segundo runtime del agente con el modelo de referencia @cf/qwen/qwen2.5-coder-32b-instruct, verificado contra la API real hasta la autenticacion; (2) asyncpg declarado y PRAGMA foreign_keys=ON en SQLite, que corrige filas huerfanas en rollbacks; (3) frontend adaptado a movil (sidebar -> drawer, objetivos tactiles de 44px, safe areas, tablas con scroll interno) y convertido en PWA instalable (manifiesto, iconos, service worker que nunca cachea /api/, aviso de actualizacion y aviso de sin conexion); (4) estados de error honestos en dashboard/proyectos y en la comprobacion de sesion, que antes se tragaban los fallos y mostraban datos vacios o cerraban la sesion; (5) README reescrito como guia real del proyecto, .env.example y docs secundarios actualizados, y este informe. Ademas, el chat del agente ahora transmite la respuesta por SSE y NIom tiene cuerpo: una mascota robot en SVG+CSS cuya maquina de estados esta atada al estado real de la peticion (atento, pensando, escribiendo con portatil, exito, error, saludo al enviar). Verificado en navegador real (Chromium headless) el build de produccion: manifiesto e iconos servidos, service worker activado, shell cargada sin conexion, /api nunca cacheada, banner de actualizacion tras simular un despliegue, drawer con foco atrapado, y 320/768/1440 sin desbordamiento horizontal. No se ha hecho git push ni ningun despliegue.",
   "completed_work": [
     "Auditoria completa (estructura, backend, frontend, contratos, seguridad, tests, estado PWA/movil) con dos exploraciones read-only en paralelo y linea base de tests (229 passed).",
     "Cloudflare Workers AI integrado en el backend del agente como tercera implementacion del seam AgentBackend, con 29 tests nuevos.",
@@ -14,7 +14,11 @@
     "Accesibilidad: hook compartido de trampa de foco para los tres dialogos, enlace de salto al contenido, tabla con scope/caption, selector de ZIP alcanzable por teclado, tarjetas de historial convertidas en botones reales y role=alert en los errores asincronos.",
     "Robustez: estados de error con reintento en dashboard, proyectos y comprobacion de sesion (antes un corte del backend cerraba la sesion y borraba el token).",
     "Documentacion: README reescrito (puesta en marcha, PWA, despliegue manual con Supabase, notas de seguridad), .env.example y contrato de API actualizados, documento del motor actualizado, y este informe.",
-    "Verificacion: suite completa, build de produccion type-checked, smoke test del API por HTTP real end-to-end, y comprobaciones en navegador a 320/768/1440 con service worker."
+    "Verificacion: suite completa, build de produccion type-checked, smoke test del API por HTTP real end-to-end, y comprobaciones en navegador a 320/768/1440 con service worker.",
+    "Streaming real del agente: POST /agent/chat/stream (SSE) con eventos meta/delta/done/error, cancelacion que aborta la peticion al proveedor, y 13 tests nuevos de la secuencia y de los fallos antes y despues del primer byte.",
+    "Mascota del asistente: componente Robot reutilizable (SVG + CSS, props tipadas) con siete estados derivados del estado real del turno, laptop en la fase de escritura, poses estaticas bajo prefers-reduced-motion, pausa en pestana oculta, hover solo donde hay puntero y boton para ocultarla.",
+    "Verificacion en navegador de cada transicion (attentive -> user-sent -> thinking -> typing -> success -> attentive), de la cancelacion, del error, de reduced motion, del conmutador de la mascota y del tamano movil.",
+    "Cierre de un agujero de fuga detectado por los tests: redact() no reconoce un token de 40 caracteres, asi que ahora la frontera del agente tambien borra por valor los secretos que el proceso conoce."
   ],
   "changes": [
     {
@@ -312,6 +316,110 @@
       "reason": "Apartado 17 del encargo.",
       "impact": "Permite retomar el trabajo sin depender de la conversacion.",
       "verification": "Validado con json.load (JSON valido, sin comentarios ni comas finales)."
+    },
+    {
+      "file": "app/agent/backend.py",
+      "change_type": "modified",
+      "description": "Se anade el protocolo opcional StreamingAgentBackend (con un metodo stream) y el ayudante stream_answer(), que usa el stream del backend cuando lo tiene y, cuando no, entrega su respuesta completa como un unico fragmento.",
+      "reason": "El estado 'escribiendo' solo es honesto si hay texto llegando de verdad; un runtime que no sabe transmitir no debe verse obligado a fingirlo.",
+      "impact": "El contrato de AgentBackend no cambia: el streaming es una capacidad opcional y el llamante no distingue cual de los dos caminos se uso.",
+      "verification": "tests/test_agent_stream.py (backend sin stream -> un delta y done) y los 29 tests previos de cloudflare siguen en verde."
+    },
+    {
+      "file": "app/agent/cloudflare.py",
+      "change_type": "modified",
+      "description": "Implementa stream(): misma peticion con \"stream\": true y Accept: text/event-stream, lectura incremental de los frames de Cloudflare (data: {\"response\": \"...\"} ... data: [DONE]) descartando comentarios y frames ilegibles, y cierre de la conexion al cerrar el generador. Se factorizan _payload/_headers/_check_status para no duplicar la peticion ni el tratamiento de errores.",
+      "reason": "Es el unico runtime del proyecto que puede transmitir de verdad, y el formato de frames esta documentado por Cloudflare (verificado en su documentacion y en su blog).",
+      "impact": "Con el backend hosted, el chat muestra el texto mientras el modelo lo escribe.",
+      "verification": "4 tests nuevos en tests/test_agent_cloudflare.py sobre un servidor local: frames con comentario y frame ilegible descartados, llegada progresiva (el primer fragmento llega antes de la mitad del tiempo total), credenciales rechazadas sin filtrar el token, host inalcanzable y backend sin configurar."
+    },
+    {
+      "file": "app/agent/service.py",
+      "change_type": "modified",
+      "description": "Se separa prepare() (alcance + digest + prompt, en un AgentContext inmutable que comparten los dos transportes) y se anade stream(), que entrega fragmentos con el mismo presupuesto de tiempo (comprobado por fragmento, porque el timeout de lectura de httpx ya cubre un modelo que se queda callado) y falla si al final no hay texto.",
+      "reason": "Evitar dos construcciones distintas del contexto y no dejar que un modelo mudo produzca una respuesta vacia.",
+      "impact": "Los dos endpoints citan exactamente los mismos hallazgos al mismo runtime.",
+      "verification": "test_agent_stream.py (una respuesta sin texto es un evento de error) y los tests previos del endpoint completo."
+    },
+    {
+      "file": "app/api/v1/agent.py",
+      "change_type": "modified",
+      "description": "Nuevo endpoint POST /agent/chat/stream (StreamingResponse text/event-stream, Cache-Control: no-store, X-Accel-Buffering: no) con eventos meta/delta/done/error; toda fallo previo al primer byte sigue siendo un codigo de estado JSON. Ademas, los motivos de error pasan por _reason(), que borra por valor CLOUDFLARE_API_TOKEN y SECRET_KEY.",
+      "reason": "El estado 'escribiendo' necesita un canal que permita ver el texto llegar; y un motivo de error nunca debe poder llevar una credencial.",
+      "impact": "La SPA responde en streaming y un fallo a mitad de generacion conserva lo ya escrito.",
+      "verification": "13 casos en tests/test_agent_stream.py: orden de eventos, 401/403/422/429 antes del stream, fallo a mitad (fragmentos + error, sin done), respuesta vacia y limpieza del token en el evento de error."
+    },
+    {
+      "file": "app/analysis/redact.py",
+      "change_type": "modified",
+      "description": "Nueva funcion redact_with_values(): ademas de los patrones de redact(), sustituye literalmente los valores secretos que le pasa quien los conoce (ignorando los de menos de 8 caracteres).",
+      "reason": "Un test de la ruta de streaming demostro que un token de Cloudflare (40 caracteres sin prefijo) no tiene forma reconocible y sobrevivia intacto en el mensaje de error.",
+      "impact": "Ningun secreto configurado puede salir en una respuesta del agente.",
+      "verification": "tests/test_agent_stream.py::test_the_stream_never_carries_a_secret (falla sin el cambio, pasa con el) y la suite completa (tests de redaccion del motor incluidos)."
+    },
+    {
+      "file": "frontend/src/api/agent.ts",
+      "change_type": "modified",
+      "description": "Nuevo cliente de streaming con fetch + ReadableStream + AbortSignal: parsea los frames SSE (incluido uno partido entre dos lecturas), valida el frame meta campo por campo, y devuelve un resultado tipado (done | cancelled | error) en lugar de lanzar excepciones.",
+      "reason": "axios no permite leer un cuerpo incrementalmente en el navegador, y 'el usuario pulso detener' o 'el modelo fallo a mitad' son resultados esperados, no excepciones.",
+      "impact": "El chat recibe el texto segun llega y puede cancelar. Se retira la llamada de respuesta completa, que ya no usaba nadie.",
+      "verification": "tsc + build; en el navegador se comprobo que el proxy de desarrollo entrega 28 fragmentos incrementales y que el cliente los pinta al llegar."
+    },
+    {
+      "file": "frontend/src/components/Robot.tsx",
+      "change_type": "created",
+      "description": "Mascota del asistente: un unico SVG en linea (cabeza con antena, ojos, altavoz, torso con LEDs, brazos, portatil, puntos de pensamiento y destello) sin imagenes, fuentes ni librerias. La prop state (tipada) se escribe como data-state y todo el movimiento vive en CSS; el componente ademas pausa sus animaciones cuando la pestana esta oculta y se marca aria-hidden por ser decorativo.",
+      "reason": "El encargo pide una mascota original, ligera y reactiva al estado real del chat.",
+      "impact": "El asistente tiene presencia visual sin pedir atencion ni costar render: React solo cambia un atributo.",
+      "verification": "Capturas de las siete poses en el navegador a 220px; 40x40 medido dentro de la cabecera del panel; aria-hidden y no focusable comprobados."
+    },
+    {
+      "file": "frontend/src/components/AgentChat.tsx",
+      "change_type": "modified",
+      "description": "El chat pasa a streaming: fases reales (pending, generating, streaming), burbuja que crece con los fragmentos, boton Detener que aborta, respuesta parcial conservada al cancelar (marcada 'Cancelado') y estado de error con la voz del agente. La mascota de la cabecera se deriva de esas fases (precedencia documentada) y se anade el boton de ojo para ocultarla, con la preferencia recordada en localStorage.",
+      "reason": "El encargo exige que la mascota reaccione a eventos reales y distinga mensaje enviado, peticion pendiente, modelo procesando, streaming, fin, cancelacion y error.",
+      "impact": "Ningun movimiento se debe a un temporizador propio salvo las dos poses de los extremos (saludo y exito).",
+      "verification": "Linea de tiempo real capturada en el navegador: attentive -> user-sent -> thinking -> typing -> success -> attentive; cancelacion a mitad; error a mitad; recuperacion al volver a escribir; conmutador de la mascota con recarga incluida."
+    },
+    {
+      "file": "frontend/src/index.css",
+      "change_type": "modified",
+      "description": "Bloque .sw-robot* con las animaciones (respiracion, parpadeo, mirada, LEDs, puntos, portatil, brazos, cursor, saludo, exito, error), hover solo bajo @media (hover: hover) y pausa global por clase. Los estados se distinguen tambien en reposo (opacidad declarada de los puntos, portatil fuera, ojos entornados, sonrisa) para que reduced-motion deje una version estatica pero informativa.",
+      "reason": "El encargo pide animaciones discretas y una alternativa estatica; y nada puede comunicarse solo con color o movimiento.",
+      "impact": "La mascota usa los tokens existentes (acento para actividad, danger para error) y respeta el sistema de diseno sin anadir dependencias.",
+      "verification": "Comprobado en el navegador con prefers-reduced-motion: reduce (puntos a 0.85 y antena en acento, ojos de error girados) y con movimiento normal (puntos a 0.90, LEDs a 1.00)."
+    },
+    {
+      "file": "frontend/src/i18n/dictionary.ts",
+      "change_type": "modified",
+      "description": "Seis claves nuevas en EN y ES: agent.generating, agent.stop, agent.cancelled, agent.mascotHide, agent.mascotShow y a11y ya existente; el tipo TranslationKey obliga a traducirlas.",
+      "reason": "Todo texto nuevo pasa por el diccionario tipado.",
+      "impact": "El chat es bilingue en los estados nuevos.",
+      "verification": "tsc en verde (una clave sin traducir rompe el build)."
+    },
+    {
+      "file": "frontend/src/components/ui/icons.tsx",
+      "change_type": "modified",
+      "description": "Iconos EyeIcon y EyeOffIcon para el conmutador de la mascota, con el mismo trazo que el resto del set.",
+      "reason": "El boton necesita un glifo propio; no se anaden dependencias de iconos.",
+      "impact": "Sin coste y coherente con el set existente.",
+      "verification": "tsc + build."
+    },
+    {
+      "file": "tests/test_agent_stream.py",
+      "change_type": "created",
+      "description": "13 casos del chat en streaming: orden meta/delta/done, los fragmentos suman el texto completo, el contexto cita los hallazgos del ultimo run terminado, un runtime sin stream produce un stream de un fragmento, 422/403/429/401/503 antes del primer byte, fallo a mitad (fragmentos conservados + error), respuesta vacia, ningun secreto en el evento de error, presupuesto de tiempo agotado y el AgentContext inmutable.",
+      "reason": "Fijar la frontera entre 'fallo antes del stream' y 'fallo dentro del stream', que es lo que el cliente necesita para pintar el estado correcto.",
+      "impact": "Cobertura del transporte nuevo.",
+      "verification": "13 passed."
+    },
+    {
+      "file": "app/core/config.py, frontend/src/config.ts, frontend/package.json, README.md",
+      "change_type": "modified",
+      "description": "Version subida a 1.6.0-alpha en los tres puntos que el proyecto mantiene sincronizados (APP_VERSION del backend, package.json y el badge del SPA) mas la insignia del README. El changelog se reordena: la entrada 1.6.0-alpha recoge lo que se anadio despues de la 1.5.0 (respuesta en streaming, mascota y limpieza de secretos por valor) y la entrada 1.5.0-alpha se queda con lo suyo (PWA, movil, Cloudflare, asyncpg, PRAGMA, documentacion).",
+      "reason": "El streaming y la mascota son una entrega de funcionalidad posterior al parche 1.5.0: mezclarlas en la misma entrada dejaria el registro de versiones sin correspondencia con los cambios.",
+      "impact": "Version coherente en API, SPA, paquete y documentacion, con cada seccion del changelog describiendo su propia entrega. ENGINE_VERSION sigue en 1.0.0 porque el motor de analisis no cambio.",
+      "verification": "GET /health y /api/v1/health devuelven 1.6.0-alpha; los metadatos de OpenAPI dicen 'Stackwise 1.6.0-alpha'; el badge del SPA muestra '1.6.0 alpha' en desarrollo y en el build de produccion; grep confirma que solo queda la version nueva en los cuatro archivos."
     }
   ],
   "integrations": {
@@ -377,45 +485,259 @@
     ]
   },
   "environment_variables": [
-    {"name": "SECRET_KEY", "used_by": "backend", "purpose": "Firma de los JWT; sin valor por defecto, la aplicacion no arranca sin el", "required": true, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "SQLALCHEMY_URL", "used_by": "backend", "purpose": "URL del engine async (SQLite por defecto; postgresql+asyncpg:// para Supabase)", "required": true, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "DATABASE_URL", "used_by": "backend, docker-compose", "purpose": "URL sincrona de despliegue (Alembic y docker-compose)", "required": false, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "CLOUDFLARE_ACCOUNT_ID", "used_by": "backend", "purpose": "Cuenta de Cloudflare para Workers AI", "required": true, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "CLOUDFLARE_API_TOKEN", "used_by": "backend", "purpose": "Token de Workers AI (permiso Workers AI - Read)", "required": true, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "CLOUDFLARE_MODEL_ID", "used_by": "backend", "purpose": "Id de catalogo del modelo hosted (por defecto @cf/qwen/qwen2.5-coder-32b-instruct)", "required": false, "manual_configuration_required": false, "secret_value_included": false},
-    {"name": "AGENT_BACKEND", "used_by": "backend", "purpose": "Runtime del agente: qwen | cloudflare | none", "required": false, "manual_configuration_required": false, "secret_value_included": false},
-    {"name": "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET", "used_by": "backend", "purpose": "OAuth Google (opcional; un par vacio desactiva el proveedor)", "required": false, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET", "used_by": "backend", "purpose": "OAuth GitHub (opcional)", "required": false, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "API_PUBLIC_URL", "used_by": "backend", "purpose": "Origen propio con el que se construyen las redirect URI de OAuth", "required": false, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "FRONTEND_URL", "used_by": "backend", "purpose": "Origen al que vuelve el navegador tras el OAuth", "required": false, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "CORS_ORIGINS", "used_by": "backend", "purpose": "Origenes permitidos; el valor por defecto [\"*\"] debe restringirse en produccion", "required": false, "manual_configuration_required": true, "secret_value_included": false},
-    {"name": "VITE_API_URL", "used_by": "frontend", "purpose": "URL del API para el SPA; por defecto usa la ruta relativa /api/v1", "required": false, "manual_configuration_required": true, "secret_value_included": false}
+    {
+      "name": "SECRET_KEY",
+      "used_by": "backend",
+      "purpose": "Firma de los JWT; sin valor por defecto, la aplicacion no arranca sin el",
+      "required": true,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "SQLALCHEMY_URL",
+      "used_by": "backend",
+      "purpose": "URL del engine async (SQLite por defecto; postgresql+asyncpg:// para Supabase)",
+      "required": true,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "DATABASE_URL",
+      "used_by": "backend, docker-compose",
+      "purpose": "URL sincrona de despliegue (Alembic y docker-compose)",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "CLOUDFLARE_ACCOUNT_ID",
+      "used_by": "backend",
+      "purpose": "Cuenta de Cloudflare para Workers AI",
+      "required": true,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "CLOUDFLARE_API_TOKEN",
+      "used_by": "backend",
+      "purpose": "Token de Workers AI (permiso Workers AI - Read)",
+      "required": true,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "CLOUDFLARE_MODEL_ID",
+      "used_by": "backend",
+      "purpose": "Id de catalogo del modelo hosted (por defecto @cf/qwen/qwen2.5-coder-32b-instruct)",
+      "required": false,
+      "manual_configuration_required": false,
+      "secret_value_included": false
+    },
+    {
+      "name": "AGENT_BACKEND",
+      "used_by": "backend",
+      "purpose": "Runtime del agente: qwen | cloudflare | none",
+      "required": false,
+      "manual_configuration_required": false,
+      "secret_value_included": false
+    },
+    {
+      "name": "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET",
+      "used_by": "backend",
+      "purpose": "OAuth Google (opcional; un par vacio desactiva el proveedor)",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET",
+      "used_by": "backend",
+      "purpose": "OAuth GitHub (opcional)",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "API_PUBLIC_URL",
+      "used_by": "backend",
+      "purpose": "Origen propio con el que se construyen las redirect URI de OAuth",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "FRONTEND_URL",
+      "used_by": "backend",
+      "purpose": "Origen al que vuelve el navegador tras el OAuth",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "CORS_ORIGINS",
+      "used_by": "backend",
+      "purpose": "Origenes permitidos; el valor por defecto [\"*\"] debe restringirse en produccion",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    },
+    {
+      "name": "VITE_API_URL",
+      "used_by": "frontend",
+      "purpose": "URL del API para el SPA; por defecto usa la ruta relativa /api/v1",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
+    }
   ],
   "tests": [
-    {"name": "Suite backend (linea base, antes de cambios)", "status": "passed", "details": "229 passed en 38,76s."},
-    {"name": "Suite backend (final)", "status": "passed", "details": "260 passed en 46,90s (31 casos nuevos: 29 del backend Cloudflare y 2 de la cascada)."},
-    {"name": "Build de produccion del frontend", "status": "passed", "details": "tsc + vite build, con service worker generado (10 entradas precacheadas); tambien con `npm run build --prefix frontend` desde la raiz."},
-    {"name": "Smoke test del API por HTTP real", "status": "passed", "details": "uvicorn en :8001 con base SQLite temporal: /health, registro, login, /auth/me, creacion de proyecto, subida de ZIP (202), ejecucion completada en 0,53s con ruff 0.16.10, bandit 1.9.4 y radon 6.0.1, 4 hallazgos normalizados (B602, B608, B404, F401), dashboard y 401 sin token."},
-    {"name": "Agente en modo qwen sin el modelo instalado", "status": "passed", "details": "/agent/status devuelve available=false con el motivo y /agent/chat responde 503 con ese mismo motivo saneado."},
-    {"name": "Agente en modo cloudflare contra la API real", "status": "passed", "details": "/agent/status disponible y /agent/chat 503 con el motivo saneado tras la respuesta 401 real de Cloudflare; el token no aparece en la respuesta ni en el log."},
-    {"name": "PWA en navegador (build de produccion)", "status": "passed", "details": "Manifiesto 200 con nombre, start_url, display e iconos correctos; iconos y favicon 200; service worker activado con scope /; contexto seguro; metadatos iOS presentes."},
-    {"name": "Sin conexion", "status": "passed", "details": "Con la red emulada como desconectada, el documento se sirve desde el service worker (fromServiceWorker true, 200), la peticion a /api falla a nivel de red (no se sirve de cache) y aparece el aviso explicito con Reintentar."},
-    {"name": "Actualizacion del service worker", "status": "passed", "details": "Al simular un despliegue (sw.js modificado) y forzar la comprobacion, el worker queda en waiting y aparece el aviso 'Hay una version nueva'; al pulsar Recargar se activa, el aviso desaparece y la sesion y los datos siguen intactos."},
-    {"name": "Drawer movil y foco", "status": "passed", "details": "A 320px: boton de menu 44x44, panel de 272px, role=dialog con aria-modal, Tab cicla solo dentro del panel, Escape cierra y devuelve el foco al boton, y el fondo no es una parada de tabulacion."},
-    {"name": "Layout 320 / 768 / 1440", "status": "passed", "details": "Sin desbordamiento horizontal en ninguno de los tres anchos (scrollWidth == innerWidth); sidebar de 256px a partir de 768; 4/2/1 columnas en las tarjetas de estadisticas; la tabla de proyectos se desplaza dentro de su tarjeta."},
-    {"name": "Estados de error del frontend", "status": "passed", "details": "Con GET /projects abortado: mensaje de fallo con Reintentar y sin el texto de lista vacia; al pulsar Reintentar cargan los datos. Con el API caido: estado de sesion inalcanzable y token conservado."},
-    {"name": "Instalacion en iPhone/iPad real", "status": "not_run", "details": "No hay hardware Apple disponible. Los metadatos, el icono PNG de 180px y el manifiesto estan implementados y comprobados, pero el flujo Compartir -> Anadir a pantalla de inicio no se ha probado fisicamente."},
-    {"name": "Instalacion en Android real", "status": "not_run", "details": "Sin dispositivo Android. La instalabilidad se ha comprobado en Chromium de escritorio (manifiesto valido, iconos, service worker, contexto seguro)."},
-    {"name": "Conexion a PostgreSQL/Supabase", "status": "not_run", "details": "Sin demonio Docker, sin servidor PostgreSQL y sin credenciales autorizadas en este entorno."},
-    {"name": "Generacion real con Cloudflare Workers AI", "status": "blocked", "details": "Requiere un token real con permiso Workers AI - Read, que no existe en el repositorio ni se ha solicitado."},
-    {"name": "Suite de tests del frontend", "status": "not_run", "details": "El proyecto no tiene runner de tests de frontend; la verificacion se ha hecho con el build type-checked y comprobaciones en navegador real."}
+    {
+      "name": "Suite backend (linea base, antes de cambios)",
+      "status": "passed",
+      "details": "229 passed en 38,76s."
+    },
+    {
+      "name": "Suite backend (final)",
+      "status": "passed",
+      "details": "260 passed en 46,90s (31 casos nuevos: 29 del backend Cloudflare y 2 de la cascada)."
+    },
+    {
+      "name": "Build de produccion del frontend",
+      "status": "passed",
+      "details": "tsc + vite build, con service worker generado (10 entradas precacheadas); tambien con `npm run build --prefix frontend` desde la raiz."
+    },
+    {
+      "name": "Smoke test del API por HTTP real",
+      "status": "passed",
+      "details": "uvicorn en :8001 con base SQLite temporal: /health, registro, login, /auth/me, creacion de proyecto, subida de ZIP (202), ejecucion completada en 0,53s con ruff 0.16.10, bandit 1.9.4 y radon 6.0.1, 4 hallazgos normalizados (B602, B608, B404, F401), dashboard y 401 sin token."
+    },
+    {
+      "name": "Agente en modo qwen sin el modelo instalado",
+      "status": "passed",
+      "details": "/agent/status devuelve available=false con el motivo y /agent/chat responde 503 con ese mismo motivo saneado."
+    },
+    {
+      "name": "Agente en modo cloudflare contra la API real",
+      "status": "passed",
+      "details": "/agent/status disponible y /agent/chat 503 con el motivo saneado tras la respuesta 401 real de Cloudflare; el token no aparece en la respuesta ni en el log."
+    },
+    {
+      "name": "PWA en navegador (build de produccion)",
+      "status": "passed",
+      "details": "Manifiesto 200 con nombre, start_url, display e iconos correctos; iconos y favicon 200; service worker activado con scope /; contexto seguro; metadatos iOS presentes."
+    },
+    {
+      "name": "Sin conexion",
+      "status": "passed",
+      "details": "Con la red emulada como desconectada, el documento se sirve desde el service worker (fromServiceWorker true, 200), la peticion a /api falla a nivel de red (no se sirve de cache) y aparece el aviso explicito con Reintentar."
+    },
+    {
+      "name": "Actualizacion del service worker",
+      "status": "passed",
+      "details": "Al simular un despliegue (sw.js modificado) y forzar la comprobacion, el worker queda en waiting y aparece el aviso 'Hay una version nueva'; al pulsar Recargar se activa, el aviso desaparece y la sesion y los datos siguen intactos."
+    },
+    {
+      "name": "Drawer movil y foco",
+      "status": "passed",
+      "details": "A 320px: boton de menu 44x44, panel de 272px, role=dialog con aria-modal, Tab cicla solo dentro del panel, Escape cierra y devuelve el foco al boton, y el fondo no es una parada de tabulacion."
+    },
+    {
+      "name": "Layout 320 / 768 / 1440",
+      "status": "passed",
+      "details": "Sin desbordamiento horizontal en ninguno de los tres anchos (scrollWidth == innerWidth); sidebar de 256px a partir de 768; 4/2/1 columnas en las tarjetas de estadisticas; la tabla de proyectos se desplaza dentro de su tarjeta."
+    },
+    {
+      "name": "Estados de error del frontend",
+      "status": "passed",
+      "details": "Con GET /projects abortado: mensaje de fallo con Reintentar y sin el texto de lista vacia; al pulsar Reintentar cargan los datos. Con el API caido: estado de sesion inalcanzable y token conservado."
+    },
+    {
+      "name": "Instalacion en iPhone/iPad real",
+      "status": "not_run",
+      "details": "No hay hardware Apple disponible. Los metadatos, el icono PNG de 180px y el manifiesto estan implementados y comprobados, pero el flujo Compartir -> Anadir a pantalla de inicio no se ha probado fisicamente."
+    },
+    {
+      "name": "Instalacion en Android real",
+      "status": "not_run",
+      "details": "Sin dispositivo Android. La instalabilidad se ha comprobado en Chromium de escritorio (manifiesto valido, iconos, service worker, contexto seguro)."
+    },
+    {
+      "name": "Conexion a PostgreSQL/Supabase",
+      "status": "not_run",
+      "details": "Sin demonio Docker, sin servidor PostgreSQL y sin credenciales autorizadas en este entorno."
+    },
+    {
+      "name": "Generacion real con Cloudflare Workers AI",
+      "status": "blocked",
+      "details": "Requiere un token real con permiso Workers AI - Read, que no existe en el repositorio ni se ha solicitado."
+    },
+    {
+      "name": "Suite de tests del frontend",
+      "status": "not_run",
+      "details": "El proyecto no tiene runner de tests de frontend; la verificacion se ha hecho con el build type-checked y comprobaciones en navegador real."
+    },
+    {
+      "name": "tests/test_agent_stream.py",
+      "status": "passed",
+      "details": "13 passed. Incluye la secuencia de eventos, los fallos antes y despues del primer byte y el fallo de tiempo agotado."
+    },
+    {
+      "name": "tests/test_agent_cloudflare.py (streaming)",
+      "status": "passed",
+      "details": "4 casos nuevos sobre servidor local: frames SSE reales, comentario y frame ilegible descartados, llegada progresiva, credenciales y host inalcanzable. 33 passed en total en el archivo."
+    },
+    {
+      "name": "Suite completa tras el streaming y la mascota",
+      "status": "passed",
+      "details": "277 passed en 53,95s."
+    },
+    {
+      "name": "Maquina de estados de la mascota en navegador",
+      "status": "passed",
+      "details": "Con un backend stub que transmite de verdad: attentive -> user-sent -> thinking -> typing (portatil con opacidad 1 y brazos/cursor animados) -> success -> attentive; lapsos medidos por un MutationObserver sobre data-state."
+    },
+    {
+      "name": "Cancelacion en navegador",
+      "status": "passed",
+      "details": "A mitad de la escritura: se conserva el texto parcial con la nota 'Cancelled', vuelve a aparecer Enviar y la mascota vuelve a reposo (no a error)."
+    },
+    {
+      "name": "Error a mitad de stream en navegador",
+      "status": "passed",
+      "details": "Estado error con pose propia (pupilas giradas 14 grados y escaladas, antena en color de alerta), texto parcial conservado y nota de error en la voz del agente; al escribir de nuevo vuelve a atento."
+    },
+    {
+      "name": "prefers-reduced-motion",
+      "status": "passed",
+      "details": "Duraciones colapsadas a 0.01ms y, aun asi, cada estado se distingue: puntos de pensamiento a 0.85, antena en acento, ojos de error girados, portatil visible."
+    },
+    {
+      "name": "Conmutador de la mascota",
+      "status": "passed",
+      "details": "aria-pressed y etiqueta cambian, la figura desaparece y la preferencia sobrevive a una recarga (localStorage stackwise_mascot)."
+    },
+    {
+      "name": "Consola del navegador",
+      "status": "passed",
+      "details": "0 errores y 0 avisos; solo aparecen los ERR_ABORTED esperados de las dos cancelaciones deliberadas."
+    },
+    {
+      "name": "Chat en movil (390px)",
+      "status": "passed",
+      "details": "Panel 342x396 dentro del viewport, mascota 40x40 en la cabecera sin tapar compositor ni mensajes, sin desbordamiento horizontal."
+    },
+    {
+      "name": "Version 1.6.0-alpha en los cuatro puntos",
+      "status": "passed",
+      "details": "Comprobado contra el API en ejecucion (/health, /api/v1/health y la metadata de OpenAPI) y en el navegador (badge del SPA en desarrollo y en el build servido por preview)."
+    }
   ],
   "pwa_and_mobile": {
     "manifest": "frontend/public/manifest.webmanifest (id, name, short_name, description, lang, start_url, scope, display standalone, orientation any, theme_color y background_color #eef1f6, categories, 3 entradas de iconos). Servido con 200 y validado por el navegador.",
     "icons": "icon-192.png (192x192, esquinas), icon-512.png (512x512, maskable a sangre), icon-maskable.svg (fuente del maskable, W al 60% dentro de la zona segura) y apple-touch-icon.png (180x180, RGB opaco). Generados con rsvg-convert desde la marca existente; favicon.svg se conserva.",
     "service_worker": "Generado por vite-plugin-pwa 1.3.0 (generateSW): precache de 10 entradas (HTML, CSS, JS, iconos, manifiesto, favicon), NavigationRoute hacia /index.html con denylist /^\\/api\\//, ruta NetworkOnly para cualquier pathname que empiece por /api/, y runtime caching CacheFirst/StaleWhileRevalidate para las dos fuentes de Google. registerType 'prompt' (el worker nuevo espera) e injectRegister false (registra React).",
     "ios_metadata": "viewport-fit=cover, apple-mobile-web-app-capable, apple-mobile-web-app-status-bar-style default, apple-mobile-web-app-title, mobile-web-app-capable, apple-touch-icon 180x180 y theme-color por esquema de color.",
-    "mobile_adaptations": "Sidebar de 256px -> drawer por debajo de 768px con foco atrapado; min-h-dvh; areas seguras en barra, drawer, pie y FAB; objetivos tactiles de 44px; campos a 16px; badges y textos auxiliares a 12px; tablas con scroll horizontal interno; paneles flotantes con alturas en dvh y ancho limitado por viewport; aviso de sin conexion/actualizacion.",
+    "mobile_adaptations": "Sidebar de 256px -> drawer por debajo de 768px con foco atrapado; min-h-dvh; areas seguras en barra, drawer, pie y FAB; objetivos tactiles de 44px; campos a 16px; badges y textos auxiliares a 12px; tablas con scroll horizontal interno; paneles flotantes con alturas en dvh y ancho limitado por viewport; aviso de sin conexion/actualizacion. La mascota se ajusta a 40px en la cabecera del chat y no tapa el compositor ni los mensajes (medido a 390px).",
     "checks_performed": [
       "Manifiesto e iconos servidos 200 y contenidos verificados.",
       "Service worker registrado y activado; precache inspeccionada (no contiene nada de /api).",
@@ -445,7 +767,7 @@
     ]
   },
   "technical_decisions": [
-    "Cloudflare Workers AI se integra como una implementacion mas del protocolo AgentBackend, no como servicio aparte: el seam ya existia y el encargo prohibe dividir Main.",
+    "La version se sube a 1.6.0-alpha en los tres puntos que el propio proyecto documenta como sincronizados (mas la insignia del README), y cada entrega tiene su propia seccion de changelog: la 1.6.0 recoge el streaming y la mascota, la 1.5.0 la PWA, el movil y las integraciones.",
     "No se cambia el backend por defecto (sigue siendo qwen): el encargo prohibe reemplazar tecnologias funcionales sin justificacion tecnica concreta.",
     "Se usa la variante nativa /ai/run con {messages, max_tokens, temperature} en lugar del endpoint compatible con OpenAI, porque es la que documenta la ficha del modelo elegido.",
     "El id del modelo se valida con una expresion regular antes de interpolarse en la URL: urllib.parse.quote no escapa el punto, asi que un '..' habria podido redirigir la peticion fuera de la ruta prevista.",
@@ -458,7 +780,15 @@
     "Los estados de error se resolvieron con un componente compartido (ErrorState) usado por tres pantallas en lugar de duplicar el mismo bloque.",
     "Card deja de aceptar onClick: la unica tarjeta clicable pasa a ser un boton real, porque un div con onClick es inalcanzable con teclado.",
     "La comprobacion de sesion distingue 401/403 (sesion terminada) de cualquier otro fallo (API inalcanzable), conservando el token en el segundo caso.",
-    "La version se sube a 1.5.0-alpha en los tres puntos que el propio proyecto documenta como sincronizados, y se registra en el changelog del README."
+    "La version se sube a 1.5.0-alpha en los tres puntos que el propio proyecto documenta como sincronizados, y se registra en el changelog del README.",
+    "Se implemento streaming real (SSE) en lugar de simular la escritura: sin el, el estado TYPING de la mascota (portatil incluido) no tendria ningun hecho detras y el encargo prohibe simular actividad del modelo.",
+    "El streaming se anade como capacidad opcional del seam (StreamingAgentBackend) y no como metodo obligatorio: el runtime local no puede transmitir sin reescribir su generacion, y un backend que no transmite sigue produciendo un stream valido de un fragmento.",
+    "Los dos transportes comparten AgentContext (prepare()): el streaming no reimplementa alcance, digest ni prompt.",
+    "El presupuesto de tiempo del streaming se comprueba por fragmento en lugar de envolver la iteracion en wait_for: el timeout de lectura de httpx ya cubre un modelo que se queda callado, y un wait_for contaria tambien el tiempo del cliente leyendo.",
+    "La precedencia de estados de la mascota pone el texto real por delante del saludo y el saludo por delante de 'pensando': un modelo rapido no debe quedar tapado por una pose de 280 ms.",
+    "El fallo de token detectado por los tests se corrige en la frontera del agente (redact_with_values) y no dentro de redact(): el motor de analisis no tiene por que conocer los secretos del agente.",
+    "La mascota no se convierte en un elemento flotante nuevo: vive en la cabecera del panel (y el boton flotante conserva su icono), que es donde el encargo permite ponerla sin tapar contenido.",
+    "Se descarto la variante 'compacta' de la mascota (y su CSS) al quedarse sin uso: una sola figura a dos tamanos es suficiente y evita codigo muerto."
   ],
   "known_issues": [
     "datetime.utcnow() esta obsoleto en Python 3.14 (cientos de avisos en la suite, en modelos, security.py, status.py y tests). No rompe nada hoy; queda como deuda tecnica documentada en el roadmap.",
@@ -472,7 +802,11 @@
     "Sin runner de tests de frontend, las reglas de layout movil no quedan fijadas por pruebas automaticas.",
     "Codigo sin uso que NO se ha eliminado (el encargo prohibe borrar sin autorizacion expresa): AnalysisPersistenceService.count_findings y delete_findings, AnalyzerRegistry.applicable_languages, TokenData en app/schemas/user.py.",
     "El esquema usa JSON generico (no JSONB) y DateTime sin zona horaria: portable, pero pierde operadores JSON e informacion de zona en PostgreSQL.",
-    "Las capturas de la documentacion (docs/preview/*.webp) son anteriores a esta version; el layout de escritorio no cambio, pero no reflejan la barra movil ni el aviso de PWA."
+    "Las capturas de la documentacion (docs/preview/*.webp) son anteriores a esta version; el layout de escritorio no cambio, pero no reflejan la barra movil ni el aviso de PWA.",
+    "El runtime local (qwen) no transmite: entrega su respuesta completa como un unico fragmento, asi que con el la fase 'escribiendo' dura un instante y el portatil apenas se ve. Implementar TextIteratorStreamer es el camino si se quiere streaming local (no se ha hecho porque no puede probarse en este entorno: torch no esta instalado).",
+    "El chat no encola mensajes: mientras una respuesta se escribe, el boton es Detener y Enter no envia nada. Para mandar otra pregunta hay que detener o esperar.",
+    "Una cancelacion deliberada aparece como ERR_ABORTED en la consola del navegador: es el aspecto normal de un fetch abortado, no un fallo.",
+    "Las capturas de docs/preview siguen siendo anteriores a esta version (no incluyen la mascota ni el chat en streaming)."
   ],
   "manual_actions_required": [
     "Configurar el .env a partir de .env.example: como minimo SECRET_KEY; CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN si se usa el agente hosted; SQLALCHEMY_URL si se pasa a Supabase/Postgres.",
@@ -481,9 +815,12 @@
     "Si se cambia de motor de base de datos, ejecutar alembic upgrade head contra la base de datos definitiva.",
     "Probar la instalacion real en un iPhone/iPad (Compartir -> Anadir a pantalla de inicio) y en un Android, que es la unica parte del encargo sin verificar.",
     "Probar una generacion real del agente con un token de Workers AI valido.",
-    "Revisar este informe y el informe final en texto antes de publicar. No se ha hecho git push ni ningun despliegue: la publicacion queda en manos del usuario."
+    "Revisar este informe y el informe final en texto antes de publicar. No se ha hecho git push ni ningun despliegue: la publicacion queda en manos del usuario.",
+    "Para ver el streaming con generacion real hacen falta credenciales de Workers AI (AGENT_BACKEND=cloudflare); con el runtime local el texto llegara de golpe."
   ],
   "next_steps": [
+    "Si se quiere streaming tambien con el modelo local, implementar TextIteratorStreamer en app/agent/qwen.py y probarlo en una maquina con torch.",
+    "Regenerar las capturas de docs/preview con la mascota y el chat en streaming.",
     "Verificar la instalacion como PWA en hardware iOS y Android reales.",
     "Ejecutar la migracion baseline contra la base de datos definitiva (Supabase o Postgres propio) y comprobar el flujo completo con datos reales.",
     "Configurar un token de Workers AI y validar una respuesta generada de extremo a extremo.",

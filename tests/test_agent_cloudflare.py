@@ -17,7 +17,6 @@ import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
 import pytest
 
 from app.agent.backend import AgentUnavailable, ChatMessage
@@ -57,12 +56,32 @@ class _Stub(BaseHTTPRequestHandler):
         scenario = self.server.scenario
         if scenario.get("delay"):
             time.sleep(scenario["delay"])
+
+        content_type = scenario.get("content_type", "application/json")
+        chunks = scenario.get("chunks")
+
+        if chunks is not None:
+            # No Content-Length on purpose: a real stream is delimited by the
+            # closed connection, and the client has to see the frames as they
+            # are written rather than all at once at the end.
+            self.close_connection = True
+            self.send_response(scenario.get("status", 200))
+            self.send_header("Content-Type", content_type)
+            self.send_header("Connection", "close")
+            self.end_headers()
+            for chunk in chunks:
+                self.wfile.write(chunk.encode("utf-8"))
+                self.wfile.flush()
+                if scenario.get("chunk_delay"):
+                    time.sleep(scenario["chunk_delay"])
+            return
+
         body = scenario.get("raw") or json.dumps(scenario.get("payload", {}))
         if isinstance(body, str):
             body = body.encode("utf-8")
 
         self.send_response(scenario.get("status", 200))
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -339,6 +358,85 @@ async def test_an_unreachable_host_becomes_an_unavailable_backend():
     detail = str(raised.value)
     assert "could not be reached" in detail
     assert API_TOKEN not in detail
+
+
+# --- streaming ----------------------------------------------------------------
+
+
+async def test_streaming_yields_each_frame_as_it_arrives():
+    """The fragments reach the caller while the model is still writing."""
+    wired = [
+        'data: {"response":"B608"}\n\n',
+        ': keep-alive\n\n',  # an SSE comment: skipped, not a failure
+        'data: {"response":" is"}\n\n',
+        "data: not json\n\n",  # unparsable: skipped, not a failure
+        'data: {"response":" a string-built SQL query"}\n\n',
+        "data: [DONE]\n\n",
+    ]
+
+    with stub_cloudflare(
+        chunks=wired, chunk_delay=0.06, content_type="text/event-stream"
+    ) as (base_url, server):
+        started = time.monotonic()
+        received = [
+            (delta, time.monotonic() - started)
+            async for delta in backend_at(base_url).stream(conversation(), max_new_tokens=64)
+        ]
+
+    assert [delta for delta, _ in received] == [
+        "B608",
+        " is",
+        " a string-built SQL query",
+    ]
+    # Progressive, not one flush at the end.
+    assert received[0][1] < received[-1][1] / 2
+
+    sent = server.requests[0]
+    assert sent["body"]["stream"] is True
+    assert sent["body"]["max_tokens"] == 64
+    assert sent["headers"]["accept"] == "text/event-stream"
+    assert sent["headers"]["authorization"] == f"Bearer {API_TOKEN}"
+    assert sent["path"] == f"/accounts/{ACCOUNT_ID}/ai/run/{MODEL_ID}"
+
+
+async def test_streaming_reports_rejected_credentials_without_the_token():
+    with stub_cloudflare(
+        status=401,
+        content_type="application/json",
+        payload={
+            "result": None,
+            "success": False,
+            "errors": [{"code": 10000, "message": f"Authentication error for {API_TOKEN}"}],
+            "messages": [],
+        },
+    ) as (base_url, _):
+        with pytest.raises(AgentUnavailable) as raised:
+            async for _ in backend_at(base_url).stream(conversation(), max_new_tokens=32):
+                pass
+
+    detail = str(raised.value)
+    assert "CLOUDFLARE_API_TOKEN" in detail
+    assert API_TOKEN not in detail
+
+
+async def test_streaming_on_an_unreachable_host_is_unavailable():
+    backend = backend_at("http://127.0.0.1:1", timeout=2.0)
+
+    with pytest.raises(AgentUnavailable) as raised:
+        async for _ in backend.stream(conversation(), max_new_tokens=32):
+            pass
+
+    assert "could not be reached" in str(raised.value)
+
+
+async def test_streaming_without_configuration_raises_before_connecting():
+    backend = CloudflareBackend(account_id="", api_token="")
+
+    with pytest.raises(AgentUnavailable) as raised:
+        async for _ in backend.stream(conversation(), max_new_tokens=32):
+            pass
+
+    assert "CLOUDFLARE_ACCOUNT_ID" in str(raised.value)
 
 
 # --- the endpoints ------------------------------------------------------------

@@ -7,14 +7,20 @@ reaches the model is bounded by settings.
 """
 
 import asyncio
+import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import AsyncIterator, Optional, Sequence
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.backend import AgentBackend, AgentUnavailable, ChatMessage
+from app.agent.backend import (
+    AgentBackend,
+    AgentUnavailable,
+    ChatMessage,
+    stream_answer,
+)
 from app.agent.prompt import FindingContext, build_digest, build_messages
 from app.api.deps import get_owned_analysis_run, get_owned_project
 from app.core.config import settings
@@ -48,6 +54,24 @@ class AgentReply:
     truncated: bool
 
 
+@dataclass(frozen=True)
+class AgentContext:
+    """One answer's inputs, resolved before the model is asked anything.
+
+    Built once so the whole-answer endpoint and the streamed one quote exactly
+    the same findings to the same runtime: the scope, the digest and the system
+    prompt are decided here and nowhere else.
+    """
+
+    #: The conversation as the model will see it, system turn included.
+    conversation: list[ChatMessage]
+    findings_used: int
+    truncated: bool
+    analysis_run_id: Optional[uuid.UUID]
+    backend_name: str
+    model: str
+
+
 class AgentService:
     """One request's worth of work: scope → prompt → generation."""
 
@@ -68,6 +92,78 @@ class AgentService:
         Raises `AgentUnavailable` when the model cannot run — before any work is
         done on the prompt, so an unconfigured agent costs nothing.
         """
+        context = await self.prepare(
+            user=user,
+            messages=messages,
+            backend=backend,
+            project_id=project_id,
+            analysis_run_id=analysis_run_id,
+        )
+
+        try:
+            answer = await asyncio.wait_for(
+                backend.complete(
+                    context.conversation, max_new_tokens=settings.AGENT_MAX_NEW_TOKENS
+                ),
+                timeout=settings.AGENT_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            # `wait_for` stops waiting; a generation already running in a worker
+            # thread cannot be cancelled and simply finishes unread.
+            raise AgentUnavailable(
+                f"the model did not answer within {int(settings.AGENT_TIMEOUT_SECONDS)} seconds"
+            ) from None
+
+        return AgentReply(
+            reply=answer.strip(),
+            backend=context.backend_name,
+            model=context.model,
+            findings_used=context.findings_used,
+            analysis_run_id=context.analysis_run_id,
+            truncated=context.truncated,
+        )
+
+    async def stream(
+        self, *, context: AgentContext, backend: AgentBackend
+    ) -> AsyncIterator[str]:
+        """The same answer, as fragments, bounded by the same budget.
+
+        The deadline is checked per fragment instead of wrapping the whole
+        iteration in `wait_for`: the upstream connection already has its own read
+        timeout for a model that goes quiet, while a deadline that also counted
+        the client reading the response would be measuring the wrong thing.
+        """
+        deadline = time.monotonic() + settings.AGENT_TIMEOUT_SECONDS
+        produced = 0
+
+        async for delta in stream_answer(
+            backend,
+            context.conversation,
+            max_new_tokens=settings.AGENT_MAX_NEW_TOKENS,
+        ):
+            if time.monotonic() > deadline:
+                raise AgentUnavailable(
+                    f"the model did not finish within {int(settings.AGENT_TIMEOUT_SECONDS)} seconds"
+                )
+            produced += len(delta.strip())
+            yield delta
+
+        if produced == 0:
+            # An empty answer is a failure, not a blank reply: the transport may
+            # already have sent a 200 and some frames, so this is the only place
+            # left to say so.
+            raise AgentUnavailable("the model returned no text")
+
+    async def prepare(
+        self,
+        *,
+        user: User,
+        messages: Sequence[ChatMessage],
+        backend: AgentBackend,
+        project_id: Optional[uuid.UUID] = None,
+        analysis_run_id: Optional[uuid.UUID] = None,
+    ) -> AgentContext:
+        """Resolve the scope and build the conversation the model will receive."""
         reason = backend.unavailable_reason()
         if reason is not None:
             raise AgentUnavailable(reason)
@@ -90,27 +186,13 @@ class AgentService:
             max_message_chars=settings.AGENT_MAX_MESSAGE_CHARS,
         )
 
-        try:
-            answer = await asyncio.wait_for(
-                backend.complete(
-                    conversation, max_new_tokens=settings.AGENT_MAX_NEW_TOKENS
-                ),
-                timeout=settings.AGENT_TIMEOUT_SECONDS,
-            )
-        except asyncio.TimeoutError:
-            # `wait_for` stops waiting; a generation already running in a worker
-            # thread cannot be cancelled and simply finishes unread.
-            raise AgentUnavailable(
-                f"the model did not answer within {int(settings.AGENT_TIMEOUT_SECONDS)} seconds"
-            ) from None
-
-        return AgentReply(
-            reply=answer.strip(),
-            backend=backend.name,
-            model=backend.model,
+        return AgentContext(
+            conversation=conversation,
             findings_used=digest.used,
-            analysis_run_id=run.id if run is not None else None,
             truncated=digest.truncated,
+            analysis_run_id=run.id if run is not None else None,
+            backend_name=backend.name,
+            model=backend.model,
         )
 
     # --- scope ------------------------------------------------------------

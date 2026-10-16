@@ -915,6 +915,473 @@
   .sw-loader span:nth-child(3) {
     animation-delay: 320ms;
   }
+
+  /* ==================================================================
+     NIom's body (components/Robot.tsx)
+     ------------------------------------------------------------------
+     One inline SVG animated entirely from `data-state` on its root, so React
+     never re-renders a limb: a token arriving mid-answer changes text, not
+     this. Three rules shape everything below.
+
+       1. States differ in *pose*, not only in motion. Under
+          `prefers-reduced-motion` every duration collapses to ~0, and the
+          robot still has to show what it is doing — so the laptop, the
+          worried eyes and the smile are static properties of the state.
+       2. Blink and look live on different elements (pupil scales, eye group
+          translates) so the two can compose instead of overwriting each
+          other.
+       3. The accent colour marks *activity* only — antenna, LEDs, caret,
+          thoughts, the flash on success. At rest the robot is ink on
+          surface like every other thing in the interface.
+     ================================================================== */
+
+  .sw-robot {
+    display: block;
+    transition: transform var(--sw-t) var(--sw-ease);
+  }
+
+  /* Rotate and scale about each part's own box, not the viewBox origin. */
+  .sw-robot g,
+  .sw-robot rect,
+  .sw-robot ellipse,
+  .sw-robot circle,
+  .sw-robot path {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  /* --- parts ------------------------------------------------------- */
+  .sw-robot__shadow {
+    fill: var(--sw-border-strong);
+    opacity: 0.32;
+  }
+
+  .sw-robot__plate,
+  .sw-robot__face {
+    fill: var(--sw-raised);
+    stroke: var(--sw-border-strong);
+    stroke-width: 1.6;
+  }
+
+  .sw-robot__neck {
+    fill: var(--sw-sunken);
+  }
+
+  .sw-robot__pupil {
+    fill: var(--sw-text);
+  }
+
+  .sw-robot__grill {
+    fill: var(--sw-text-faint);
+    opacity: 0.5;
+  }
+
+  .sw-robot__led {
+    fill: var(--sw-text-faint);
+    opacity: 0.35;
+  }
+
+  .sw-robot__antenna-stem {
+    fill: none;
+    stroke: var(--sw-border-strong);
+    stroke-width: 2;
+  }
+
+  .sw-robot__antenna-tip {
+    fill: var(--sw-text-faint);
+    transition: fill var(--sw-t) var(--sw-ease);
+  }
+
+  .sw-robot__screen {
+    fill: var(--sw-sunken);
+    stroke: var(--sw-border-strong);
+    stroke-width: 1.4;
+  }
+
+  .sw-robot__keyboard {
+    fill: var(--sw-raised);
+    stroke: var(--sw-border-strong);
+    stroke-width: 1.4;
+  }
+
+  .sw-robot__code-line {
+    fill: var(--sw-text-faint);
+    opacity: 0.5;
+  }
+
+  .sw-robot__caret {
+    fill: var(--sw-accent);
+    opacity: 0;
+  }
+
+  .sw-robot__thought {
+    fill: var(--sw-accent);
+    opacity: 0;
+  }
+
+  .sw-robot__sparkle {
+    opacity: 0;
+  }
+
+  .sw-robot__sparkle path {
+    fill: none;
+    stroke: var(--sw-accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  /* The happy eyes: the smile is drawn where the pupils were. */
+  .sw-robot__grin {
+    opacity: 0;
+  }
+
+  .sw-robot__grin path {
+    stroke: var(--sw-text);
+    stroke-width: 2.6;
+    stroke-linecap: round;
+  }
+
+  /* The laptop is held in front of the torso and slides into place. */
+  .sw-robot__laptop {
+    opacity: 0;
+    transform: translateY(9px) scale(0.94);
+    transition: opacity var(--sw-t) var(--sw-ease), transform 260ms var(--sw-ease);
+  }
+
+  /* Hinged at the shoulder, not the middle of the limb. */
+  .sw-robot__arm {
+    transform-origin: 50% 12%;
+    transition: transform 260ms var(--sw-ease);
+  }
+
+  /* --- at rest ------------------------------------------------------ */
+  @keyframes sw-robot-breathe {
+    0%,
+    100% {
+      transform: scaleY(1);
+    }
+    50% {
+      transform: scaleY(1.018);
+    }
+  }
+
+  @keyframes sw-robot-sway {
+    0%,
+    100% {
+      transform: rotate(-0.7deg);
+    }
+    50% {
+      transform: rotate(0.7deg);
+    }
+  }
+
+  @keyframes sw-robot-blink {
+    0%,
+    91%,
+    100% {
+      transform: scaleY(1);
+    }
+    94% {
+      transform: scaleY(0.08);
+    }
+  }
+
+  .sw-robot__torso {
+    animation: sw-robot-breathe 4.2s var(--sw-ease) infinite;
+  }
+
+  .sw-robot__head {
+    animation: sw-robot-sway 6s var(--sw-ease) infinite;
+  }
+
+  .sw-robot__pupil {
+    animation: sw-robot-blink 5.4s linear infinite;
+  }
+
+  /* --- attentive: the user is at the keyboard ----------------------- */
+  @keyframes sw-robot-tilt {
+    0%,
+    100% {
+      transform: rotate(2.6deg);
+    }
+    50% {
+      transform: rotate(3.6deg);
+    }
+  }
+
+  .sw-robot[data-state='attentive'] .sw-robot__head {
+    animation: sw-robot-tilt 3.2s var(--sw-ease) infinite;
+  }
+
+  .sw-robot[data-state='attentive'] .sw-robot__pupil {
+    transform: scaleY(1.12);
+  }
+
+  .sw-robot[data-state='attentive'] .sw-robot__torso {
+    animation-duration: 3.2s;
+  }
+
+  /* --- thinking: the request is out, nothing has come back ---------- */
+  @keyframes sw-robot-look {
+    0%,
+    100% {
+      transform: translate(0, 1.5px);
+    }
+    25% {
+      transform: translate(-1.5px, -2px);
+    }
+    55% {
+      transform: translate(1.6px, -2.4px);
+    }
+    80% {
+      transform: translate(0.4px, 0);
+    }
+  }
+
+  @keyframes sw-robot-led {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.25);
+    }
+  }
+
+  @keyframes sw-robot-float {
+    0% {
+      opacity: 0;
+      transform: translateY(3px) scale(0.8);
+    }
+    40% {
+      opacity: 0.9;
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-5px) scale(0.85);
+    }
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__eyes {
+    animation: sw-robot-look 3.6s var(--sw-ease) infinite;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__led {
+    animation: sw-robot-led 1.5s var(--sw-ease) infinite;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__led:nth-child(2) {
+    animation-delay: 180ms;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__led:nth-child(3) {
+    animation-delay: 360ms;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__thought {
+    /* Declared as well as animated: with motion reduced every animation runs
+       once for 0.01ms and then reverts to the declared value, and the dots are
+       what marks "thinking" without relying on the antenna's colour. */
+    opacity: 0.85;
+    animation: sw-robot-float 1.8s var(--sw-ease) infinite;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__thought:nth-child(2) {
+    animation-delay: 200ms;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__thought:nth-child(3) {
+    animation-delay: 400ms;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__head {
+    animation-duration: 4.4s;
+  }
+
+  .sw-robot[data-state='thinking'] .sw-robot__antenna-tip {
+    fill: var(--sw-accent);
+  }
+
+  /* --- typing: fragments are arriving ------------------------------- */
+  @keyframes sw-robot-type-left {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    35% {
+      transform: rotate(9deg);
+    }
+    70% {
+      transform: rotate(3deg);
+    }
+  }
+
+  @keyframes sw-robot-type-right {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    35% {
+      transform: rotate(-5deg);
+    }
+    70% {
+      transform: rotate(-10deg);
+    }
+  }
+
+  @keyframes sw-robot-caret {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  .sw-robot[data-state='typing'] .sw-robot__laptop {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  .sw-robot[data-state='typing'] .sw-robot__arm--left {
+    animation: sw-robot-type-left 0.92s var(--sw-ease) infinite;
+  }
+
+  .sw-robot[data-state='typing'] .sw-robot__arm--right {
+    animation: sw-robot-type-right 0.92s var(--sw-ease) infinite;
+  }
+
+  .sw-robot[data-state='typing'] .sw-robot__caret {
+    animation: sw-robot-caret 0.46s steps(1, end) infinite;
+  }
+
+  .sw-robot[data-state='typing'] .sw-robot__antenna-tip {
+    fill: var(--sw-accent);
+  }
+
+  .sw-robot[data-state='typing'] .sw-robot__eyes {
+    opacity: 0.75;
+  }
+
+  /* --- success: the answer landed ----------------------------------- */
+  @keyframes sw-robot-nod-up {
+    0% {
+      transform: rotate(0deg) translateY(0);
+    }
+    35% {
+      transform: rotate(-2.4deg) translateY(-1.5px);
+    }
+    100% {
+      transform: rotate(0deg) translateY(0);
+    }
+  }
+
+  @keyframes sw-robot-sparkle {
+    0% {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    35% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.15);
+    }
+  }
+
+  .sw-robot[data-state='success'] .sw-robot__eyes {
+    opacity: 0;
+  }
+
+  .sw-robot[data-state='success'] .sw-robot__grin {
+    opacity: 1;
+  }
+
+  .sw-robot[data-state='success'] .sw-robot__head {
+    animation: sw-robot-nod-up 0.9s var(--sw-ease) 1;
+  }
+
+  .sw-robot[data-state='success'] .sw-robot__sparkle {
+    animation: sw-robot-sparkle 0.9s var(--sw-ease) 1;
+  }
+
+  /* --- error: it could not answer ----------------------------------- */
+  @keyframes sw-robot-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-1.6px);
+    }
+    75% {
+      transform: translateX(1.6px);
+    }
+  }
+
+  /* Worry is a pose, not a colour: the pupils tilt inward and narrow. */
+  .sw-robot[data-state='error'] .sw-robot__pupil {
+    animation: none;
+  }
+
+  .sw-robot[data-state='error'] .sw-robot__eye--left .sw-robot__pupil {
+    transform: rotate(14deg) scaleY(0.78);
+  }
+
+  .sw-robot[data-state='error'] .sw-robot__eye--right .sw-robot__pupil {
+    transform: rotate(-14deg) scaleY(0.78);
+  }
+
+  .sw-robot[data-state='error'] .sw-robot__head {
+    animation: sw-robot-shake 0.42s var(--sw-ease) 1;
+  }
+
+  .sw-robot[data-state='error'] .sw-robot__antenna-tip {
+    fill: var(--sw-danger);
+  }
+
+  /* --- user-sent: a short nod --------------------------------------- */
+  @keyframes sw-robot-nod {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    40% {
+      transform: rotate(4deg) translateY(1px);
+    }
+  }
+
+  .sw-robot[data-state='user-sent'] .sw-robot__head {
+    animation: sw-robot-nod 0.5s var(--sw-ease) 1;
+  }
+
+  /* --- attention from the pointer ----------------------------------- */
+  /* Only where a pointer can actually hover: on a touch screen this must not
+     depend on a hover event that will never come. */
+  @media (hover: hover) {
+    .sw-robot:hover {
+      transform: translateY(-1px);
+    }
+
+    .sw-robot:hover .sw-robot__face {
+      stroke: var(--sw-accent);
+    }
+  }
+
+  /* --- a tab nobody is looking at ----------------------------------- */
+  /* Set by the component on `visibilitychange`: a background tab should not
+     keep animating a mascot. */
+  .sw-robot--paused,
+  .sw-robot--paused * {
+    animation-play-state: paused !important;
+  }
 }
 
 /* =====================================================================

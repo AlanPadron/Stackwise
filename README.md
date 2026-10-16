@@ -1,6 +1,6 @@
 # Stackwise
 
-![version](https://img.shields.io/badge/version-1.5.0--alpha-c2410c)
+![version](https://img.shields.io/badge/version-1.6.0--alpha-c2410c)
 ![status](https://img.shields.io/badge/status-pre--release-a16207)
 ![backend](https://img.shields.io/badge/backend-FastAPI-2563a8)
 ![frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-2563a8)
@@ -288,6 +288,55 @@ Scope and bounds: a request is grounded in the caller's findings, capped by
 are capped by `AGENT_MAX_MESSAGES`, `AGENT_MAX_MESSAGE_CHARS`, `AGENT_MAX_NEW_TOKENS` and
 `AGENT_TIMEOUT_SECONDS`, and requests are rate limited per user.
 
+### The answer arrives while it is being written
+
+`POST /agent/chat` returns the whole answer, which is the simplest thing for a script to call.
+`POST /agent/chat/stream` returns the same answer as server-sent events — `meta` (which runtime is
+answering, and what it was given), then a `delta` per fragment, then `done` with the complete text —
+and that is what the SPA uses, because a chat that stays silent for thirty seconds does not look
+like it is working.
+
+The distinction is real, not decorative: the screen can tell *request sent* from *server accepted it*
+from *text is arriving* from *finished*, because each of those is a different event on the wire. A
+failure before the first byte is still an HTTP status (`422` bad conversation, `429` rate limit,
+`503` runtime unavailable); a failure inside the stream cannot change the status line any more, so it
+arrives as an `error` event with the same sanitised reason. Stopping the request (the **Stop** button)
+aborts the `fetch`, which closes the upstream connection, so a user who gives up stops paying for
+tokens.
+
+Only the hosted runtime streams token by token. A runtime that cannot — the local checkpoint today —
+yields its whole answer as a single fragment, which is all it can honestly report; the endpoint, the
+client and the screen are unchanged either way.
+
+### Its body
+
+NIom has a small robot, drawn as one inline `<svg>` and animated in CSS (`components/Robot.tsx` plus
+the `.sw-robot*` block in `index.css`) — no image, no font, no animation library, sharp at any size
+and recoloured by the theme tokens.
+
+It is a *state machine wired to the request*, not a decoration on a timer:
+
+| State | When | What it shows |
+|---|---|---|
+| `idle` | nothing happening | slow breathing, a blink every ~5s, a slight head sway |
+| `attentive` | the composer has focus or text, and the user is not thinking about something else | taller eyes, head tilted toward the input, faster breath |
+| `thinking` | a request is out and no text has arrived | eyes looking away, three dots rising, the chest LEDs pulsing, the antenna lit |
+| `typing` | fragments are arriving | a small laptop slides out, arms alternate on the keyboard, a caret blinks on the code |
+| `success` | the answer completed | eyes close into a smile, one nod, an accent flash |
+| `error` | the request failed | eyes narrowed and tilted, one short shake, the antenna in the alert colour |
+| `user-sent` | the moment the message goes | a short nod, then straight into thinking |
+
+Pointer hover (over the head) is CSS only and lives behind `@media (hover: hover)`, so a touch screen
+never depends on an event that cannot fire. A **Stop** while the model is writing returns the robot to
+rest with the partial answer kept and marked *Cancelled* — nothing failed, so nothing looks wrong.
+
+Accessibility: the figure is `aria-hidden` and never focusable — what the agent is doing is said in
+words by the chat's own status line (`role="status"`), which is the accessible source of truth, so a
+screen reader is never announced a moving face. Under `prefers-reduced-motion` every animation
+collapses to nothing and the states remain readable as static poses (dots out, laptop out, eyes
+narrowed, smile drawn). A background tab pauses the animation, and the eye button in the header turns
+the robot off (remembered per browser) for anyone who wants a tighter interface.
+
 ---
 
 ## How a run works
@@ -340,7 +389,7 @@ Stackwise/
 │   ├── vite.config.ts      dev proxy + the PWA (manifest, service worker, runtime caching)
 │   └── src/
 │       ├── api/            axios client (+ JWT), oauth calls, agent calls
-│       ├── components/     AppShell (sidebar/drawer), AppSidebar, AgentChat, SettingsMenu, PwaStatus, VersionBadge, ui/
+│       ├── components/     AppShell (sidebar/drawer), AppSidebar, AgentChat, Robot, SettingsMenu, PwaStatus, VersionBadge, ui/
 │       ├── context/        AuthContext, ThemeContext, SplashContext
 │       ├── hooks/          useFocusTrap — Tab containment, Escape and focus return for dialogs
 │       ├── i18n/           dictionary (en/es) + provider
@@ -409,7 +458,7 @@ Base path `/api/v1`, JSON, bearer tokens. `GET /health` lives outside it. The co
 | Repositories | `GET /github/repositories`, `POST /projects/from-repo` |
 | Projects | `GET/POST /projects`, `GET/PATCH/DELETE /projects/{id}` |
 | Analyses | `POST /projects/{id}/analyses` (multipart, `202`), `GET /projects/{id}/analyses` (history, `X-Total-Count`), `GET /analyses/{id}`, `GET /analyses/{id}/findings`, `GET /findings/{id}` |
-| NIom | `GET /agent/status`, `POST /agent/chat` |
+| NIom | `GET /agent/status`, `POST /agent/chat` (whole answer), `POST /agent/chat/stream` (server-sent events) |
 | Overview | `GET /dashboard/summary`, `GET /api/v1/health`, `GET /health` |
 
 Notable behaviour: findings and run history are paginated and filterable (`severity`, `category`,
@@ -501,12 +550,14 @@ string fails the build instead of shipping an empty label.
 
 ## How it is built
 
-- **260 tests** (`pytest` + httpx against the ASGI app) exercising the real analyzers against a
+- **277 tests** (`pytest` + httpx against the ASGI app) exercising the real analyzers against a
   throwaway database: archive attacks, path traversal, analyzer isolation and timeouts, severity
   mapping, fingerprints and dedup, lifecycle transitions, ownership, pagination, rate limits, the
   agent's bounds and the `503` path when its runtime is absent, the hosted backend over a loopback
   HTTP server (request shape, Cloudflare's error envelopes, and that its token never reaches a
-  reason), and the cascade a deleted project has to take with it.
+  reason), the streamed chat (event order, a failure before the first byte versus one mid-stream, and
+  that a runtime without streaming still produces a stream), and the cascade a deleted project has to
+  take with it.
 - **One frontend build, type-checked**: `npm run build` runs `tsc` before Vite, so the typed
   dictionary (both languages), the API types and the PWA virtual modules are checked rather than
   hoped for.
@@ -701,6 +752,22 @@ Pre-1.0, so the version is an **alpha pre-release** tag. It lives in `APP_VERSIO
 `frontend/package.json`, and `frontend/src/config.ts`, which renders it in the badge every screen
 shows. The analysis engine has its own `ENGINE_VERSION` because it can change shape without the
 application version moving; it is recorded on every run.
+
+### 1.6.0-alpha
+
+- **The answer streams.** `POST /agent/chat/stream` returns the findings agent's answer as
+  server-sent events (`meta` → `delta`* → `done`, or `error`), and the SPA switched to it: text
+  appears as the model writes it, and the **Stop** button aborts the `fetch` and with it the upstream
+  request. The whole-answer endpoint stays for callers that prefer one response. A runtime that
+  cannot stream still produces a well-formed stream of one fragment.
+- **NIom got a body**: a small robot drawn as one inline SVG and animated in CSS, driven by the real
+  request state — attentive, thinking, typing (a laptop comes out), success, error, the nod when a
+  message is sent — with `prefers-reduced-motion` handled as static poses rather than no state, a
+  header button that turns it off, and no screen-reader noise (the chat's status line says the same
+  thing in words).
+- **Security**: the agent's error reasons are now scrubbed of the app's own secrets *by value* as well
+  as by shape (`redact_with_values`), because a Cloudflare API token is forty unremarkable characters
+  that no pattern can recognise. A test that streams a failure through the endpoint is what found it.
 
 ### 1.5.0-alpha
 

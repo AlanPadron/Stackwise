@@ -134,6 +134,21 @@ that writes it is reported alongside the text.
     `429` rate limit (`AGENT_RATE_LIMIT_PER_MINUTE` per user per worker process); `503` when the
     configured backend cannot run, with the sanitised reason as `detail` — never an invented
     explanation.
+- `POST /agent/chat/stream`: the same answer, as it is written.
+  - Request: identical to `POST /agent/chat`.
+  - Response: `200 OK`, `Content-Type: text/event-stream`, `Cache-Control: no-store`. Events, in
+    order:
+    - `event: meta` — `{ "backend": "cloudflare", "model": "...", "findings_used": 12,
+      "truncated": false, "analysis_run_id": "..." }`, sent before the model is asked anything.
+    - `event: delta` — `{ "text": "…" }`, repeated. A fragment is emitted as the runtime produces it;
+      a runtime that cannot stream sends exactly one.
+    - `event: done` — `{ "reply": "…" }`, the complete answer (the concatenation of the fragments).
+    - `event: error` — `{ "detail": "…" }`, sanitised, replacing `done` when generation failed. The
+      fragments already sent are kept by the client.
+  - Errors: `422` / `429` / `503` / `403` / `404` exactly as above, and — because they happen before
+    the first byte — they are ordinary JSON responses with a status code. A failure after that can
+    only be announced as an `error` event.
+  - Closing the connection aborts the upstream generation.
 
 ## 7. Secrets
 
