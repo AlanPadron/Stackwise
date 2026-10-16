@@ -1,6 +1,6 @@
 # Stackwise
 
-![version](https://img.shields.io/badge/version-1.6.0--alpha-c2410c)
+![version](https://img.shields.io/badge/version-1.7.0--alpha-c2410c)
 ![status](https://img.shields.io/badge/status-pre--release-a16207)
 ![backend](https://img.shields.io/badge/backend-FastAPI-2563a8)
 ![frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-2563a8)
@@ -394,7 +394,7 @@ Stackwise/
 │       ├── i18n/           dictionary (en/es) + provider
 │       └── index.css       design tokens + .sw-* classes, and the small-screen/safe-area layer
 ├── docs/                   API_CONTRACT.md, ANALYSIS_ENGINE.md, preview captures
-├── tests/                  pytest + httpx ASGI suite (260 tests)
+├── tests/                  pytest + httpx ASGI suite (271 tests)
 ├── PROGRESS_REPORT.json    the working log: changes, verifications, open items
 └── alembic/                baseline schema revision
 ```
@@ -760,11 +760,33 @@ What the code does, and what a deployment still has to get right:
 
 ## Versioning
 
-Pre-1.0, so the version is an **alpha pre-release** tag. It lives in `APP_VERSION`
+An **alpha pre-release**, so the version carries a pre-release tag. It lives in `APP_VERSION`
 (`app/core/config.py`, used by the FastAPI metadata and both health endpoints),
 `frontend/package.json`, and `frontend/src/config.ts`, which renders it in the badge every screen
 shows. The analysis engine has its own `ENGINE_VERSION` because it can change shape without the
 application version moving; it is recorded on every run.
+
+### 1.7.0-alpha
+
+- **One way in: the repository import.** The local ZIP upload is gone end to end. `POST /projects`
+  (manual creation) and `POST /projects/{id}/analyses` (multipart upload) no longer exist, and with
+  them went the upload-only plumbing — the spooling and configuration-parsing helpers,
+  `inspect_archive`, the `ProjectCreate` schema, the `zip` default on a run's provenance. A project
+  is now created only by importing a GitHub repository (`POST /projects/from-repo`), whose snapshot
+  is downloaded with the caller's own token and analysed in the background, so a project never exists
+  without a repository or without its first run.
+- **The SPA loses the local path too.** The "New Project" page, the ZIP picker and the run's source
+  badge are gone; the repository import (`/projects/import`) is the single entry point, and every run
+  the app can create reports `source_type: "github"` (the history filter still accepts the legacy
+  `zip` value so old rows remain selectable).
+- **Archive validation follows the one intake left.** A snapshot is validated when it is extracted,
+  not before the run exists, so a hostile one fails its run; the traversal, symlink/FIFO, bomb, depth
+  and size rejections are covered against `extract_archive`. The multipart body limit went with the
+  upload, so the request-body ceiling guards JSON bodies only.
+- **Constraint note for operators**: because a run is now created together with its project, a
+  project never holds two in-flight runs, so `ANALYSIS_MAX_ACTIVE_RUNS_PER_PROJECT` can no longer
+  bind. It stays as the documented platform ceiling (removing the setting would break any `.env` that
+  sets it); the per-user ceiling is the one the import enforces.
 
 ### 1.6.0-alpha
 
@@ -781,11 +803,6 @@ application version moving; it is recorded on every run.
 - **Security**: the agent's error reasons are now scrubbed of the app's own secrets *by value* as well
   as by shape (`redact_with_values`), because a Cloudflare API token is forty unremarkable characters
   that no pattern can recognise. A test that streams a failure through the endpoint is what found it.
-- **One way in.** The local ZIP upload is gone end to end: `POST /projects` and
-  `POST /projects/{id}/analyses` no longer exist, the "New Project" page and the upload form were
-  removed from the SPA, and a project is now created only by importing a GitHub repository
-  (`POST /projects/from-repo`), whose snapshot is downloaded with the caller's own token and analysed
-  in the background.
 
 ### 1.5.0-alpha
 

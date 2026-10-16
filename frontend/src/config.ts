@@ -8,7 +8,7 @@ export const APP_NAME = 'Stackwise';
  * Keep it in sync with `package.json` and the API's `APP_VERSION` setting — the
  * three are bumped together.
  */
-export const APP_VERSION = '1.6.0 alpha';
+export const APP_VERSION = '1.7.0-alpha';
 
 /**
  * Destination of the "Contact" row in the settings drawer. Replace with the
