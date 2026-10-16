@@ -59,7 +59,7 @@ export const SettingsMenu: React.FC = () => {
     return (
         <div
             ref={containerRef}
-            className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))] z-40 flex flex-col items-end gap-3"
+            className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))] z-40 flex flex-col items-end gap-3"
         >
             {open && (
                 <div

@@ -348,11 +348,11 @@ export const AgentChat: React.FC = () => {
     return (
         <div
             ref={containerRef}
-            // 5.25rem = the settings cluster is 48px tall sitting at bottom-6, so
-            // the two stacks keep the same 12px rhythm instead of overlapping.
-            // The safe-area term keeps that rhythm on a phone with a home
-            // indicator, where the settings cluster sits higher.
-            className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))] z-40 flex flex-col items-end gap-3"
+            // 8.75rem = the settings cluster (48px tall, bottom 5rem) plus its 12px
+            // gap, so the two stacks keep the same rhythm instead of overlapping.
+            // Both clear the Netlify badge in the bottom-right corner. The
+            // safe-area term keeps that rhythm on a phone with a home indicator.
+            className="fixed bottom-[calc(8.75rem+env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))] z-40 flex flex-col items-end gap-3"
         >
             {open && (
                 <div
