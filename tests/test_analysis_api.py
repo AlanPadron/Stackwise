@@ -45,13 +45,13 @@ async def test_a_foreign_project_and_its_findings_are_forbidden(
     other = (
         await client.post(
             "/api/v1/auth/register",
-            json={"email": f"intruder_{uuid.uuid4().hex}@example.com", "password": "password123"},
+            json={"email": f"intruder_{uuid.uuid4().hex}@example.com", "password": "Probe-pass-2024"},
         )
     )
     assert other.status_code == 201
     login = await client.post(
         "/api/v1/auth/login",
-        data={"username": other.json()["email"], "password": "password123"},
+        data={"username": other.json()["email"], "password": "Probe-pass-2024"},
     )
     stranger = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

@@ -66,9 +66,9 @@ async def _completed_run(client, headers, repository: str = "octocat/demo") -> t
 
 async def _second_user_headers(client) -> dict[str, str]:
     email = f"other_{uuid.uuid4().hex}@example.com"
-    await client.post("/api/v1/auth/register", json={"email": email, "password": "password123"})
+    await client.post("/api/v1/auth/register", json={"email": email, "password": "Probe-pass-2024"})
     login = await client.post(
-        "/api/v1/auth/login", data={"username": email, "password": "password123"}
+        "/api/v1/auth/login", data={"username": email, "password": "Probe-pass-2024"}
     )
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 

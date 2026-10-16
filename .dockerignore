@@ -1,0 +1,46 @@
+# Keep secrets, local databases, virtualenvs and caches out of the image.
+# The Dockerfile does `COPY . .`, so anything not listed here is baked in.
+
+.git
+.gitignore
+.dockerignore
+
+# --- secrets and environment ----------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.secret
+secrets/
+
+# --- local data -----------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+stackwise.db
+data/
+workspaces/
+
+# --- local environments and caches ----------------------------------------
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+*.log
+
+# --- frontend (not built by this image) -----------------------------------
+frontend/node_modules/
+frontend/dist/

@@ -41,9 +41,18 @@ API_BASE_URL = "https://api.cloudflare.com/client/v4"
 
 _RUN_PATH = "/accounts/{account}/ai/run/{model}"
 
+#: A Cloudflare account id. It is 32 hex characters in practice, but it is
+#: validated as one URL-safe path segment rather than as that exact shape, so a
+#: future format still works. `.` is deliberately excluded: it survives
+#: percent-encoding, so `..` would climb out of the `/accounts/<id>/` segment the
+#: id is interpolated into.
+_ACCOUNT_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
 #: Workers AI model ids look like `@cf/vendor/model-name` (LoRA variants add a
-#: segment). Validated rather than trusted: the id is interpolated into the path
-#: of the outbound request, so nothing else may look like a model id.
+#: segment). Validated rather than trusted for the same reason: the id is
+#: interpolated into the path of the outbound request, so nothing else may look
+#: like a model id, and `.` (in `quote`'s always-safe set) is why the `..` check
+#: below is separate.
 _MODEL_ID = re.compile(r"^@[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+$")
 
 #: Longest slice of an upstream error body we are willing to quote.
@@ -94,6 +103,21 @@ class CloudflareBackend:
                 "the Cloudflare Workers AI backend is not configured: set "
                 + " and ".join(missing)
                 + " in the API environment and restart the API"
+            )
+        return self._settings_error()
+
+    def _settings_error(self) -> Optional[str]:
+        """The first malformed setting, by name — never by value.
+
+        A value that is present but wrong is the misconfiguration an operator is
+        most likely to make (an account e-mail or a dashboard URL pasted into
+        `CLOUDFLARE_ACCOUNT_ID`), and the upstream answer to that is an
+        unhelpful 404 far from its cause.
+        """
+        if not _ACCOUNT_ID.match(self._account_id):
+            return (
+                "CLOUDFLARE_ACCOUNT_ID is not a Cloudflare account id: expected the "
+                "32-character id from the dashboard, not an e-mail address or a URL"
             )
         return self._model_id_error()
 
@@ -236,14 +260,15 @@ class CloudflareBackend:
     def _endpoint(self) -> str:
         """The one URL this backend ever posts to.
 
-        The account id is 32 hex characters and the model id was validated to the
-        catalogue shape, so neither can add a path segment of its own. The model
-        keeps its slashes — that is how Cloudflare writes the route.
+        Both interpolated values are the validated settings: the account id is
+        one URL-safe segment (no `.`, so no `..`) and the model id is the
+        catalogue shape, which keeps its slashes because that is how Cloudflare
+        writes the route.
 
         Raises rather than returning a doubtful URL: this is the last point
         before the request exists.
         """
-        error = self._model_id_error()
+        error = self._settings_error()
         if error is not None:
             raise AgentUnavailable(error)
         return self._base_url + _RUN_PATH.format(

@@ -6,15 +6,44 @@ Base path `/api/v1`. Full engine documentation: [ANALYSIS_ENGINE.md](ANALYSIS_EN
 
 - `POST /auth/register`: Create a new account.
   - Request: `{ "email": "user@example.com", "password": "securepassword123" }`
+  - Password policy (`app/core/security.py`, not configurable): 10+ characters, at least one letter
+    and one digit, at most 72 bytes, not built on a common base. `422` with the reason otherwise.
+  - The address is stored lowercased, so `User@x.com` and `user@x.com` are the same account.
+  - `400` when the address already has an account; `429` (+ `Retry-After`) when one client address
+    registers more than `AUTH_REGISTER_RATE_LIMIT_PER_MINUTE` accounts in a minute.
   - Response: `201 Created` with User object.
 - `POST /auth/login`: Get JWT token.
   - Request: (Form Data) `username` (email), `password`.
+  - `401` for an unknown address *and* for a wrong password: same status, same body, and the same
+    bcrypt work (an unknown address is checked against a dummy hash), so it enumerates nothing.
+  - `429` (+ `Retry-After`) once attempts exceed `AUTH_LOGIN_RATE_LIMIT_PER_MINUTE` — counted per
+    account and per client address in one atomic check.
   - Response: `200 OK` with `{ "access_token": "...", "token_type": "bearer" }`.
 - `GET /auth/me`: Get current user profile.
   - Header: `Authorization: Bearer <token>`
   - Response: `200 OK` with User object.
 
 ### OAuth sign-in (Google, GitHub)
+
+Both providers are plain authorization-code flows, and neither needs code to be switched on: the API
+reads a client id/secret pair, and a provider whose pair is empty is reported as unavailable by
+`/auth/providers` (its button is then hidden by the SPA). To turn them on:
+
+1. **Google** — <https://console.cloud.google.com/apis/credentials> → *Create credentials* → *OAuth
+   client ID* → *Web application*. Add the authorized redirect URI
+   `$API_PUBLIC_URL/api/v1/auth/oauth/google/callback` **verbatim** (default
+   `http://localhost:8001/api/v1/auth/oauth/google/callback`), then set `GOOGLE_CLIENT_ID` and
+   `GOOGLE_CLIENT_SECRET`.
+2. **GitHub** — <https://github.com/settings/developers> → *New OAuth App*. Same callback URL shape
+   with `github` in place of `google`, then `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. The flow
+   also requests `repo`, which is what makes private repositories importable; a user who declines it
+   can still sign in and still import public repositories.
+3. Restart the API and reload the SPA: the buttons appear from `GET /auth/providers`, with no
+   frontend change and no rebuild.
+
+Before any of that exists, `DEV_OAUTH_MOCK=true` serves the same round-trip from this API (a consent
+screen plus a fixed `example.com` identity), so the whole flow — start, consent, callback, session in
+the URL fragment — can be exercised and tested locally. It must never be enabled on a reachable host.
 
 - `GET /auth/providers`: Which providers this server can offer.
   - Response: `200 OK` with `{ "google": true, "github": false, "mock": false }`.
@@ -23,11 +52,20 @@ Base path `/api/v1`. Full engine documentation: [ANALYSIS_ENGINE.md](ANALYSIS_EN
   - Header: `Authorization: Bearer <token>` *optional* — when present the provider account is
     **linked** to the caller instead of signing in.
   - Response: `200 OK` with `{ "authorization_url": "..." }`; `404` unknown provider, `503` not
-    configured on this server.
+    configured on this server. Also sets the PKCE verifier cookie (`sw_oauth_pkce`, HttpOnly, scoped to
+    `/api/v1/auth/oauth`).
 - `GET /auth/oauth/{provider}/callback`: Provider redirect target (not called by the SPA).
-  - Query: `code`, `state` (signed).
+  - Query: `code`, `state` (signed), or `error` when the provider refused.
   - Response: `302` to `<FRONTEND_URL>/auth/callback#token=<jwt>&next=<path>`, or
-    `#error=state|provider|link|denied` when it fails.
+    `#error=state|pkce|provider|link|denied` when it fails. `pkce` means the code arrived in a browser
+    that did not start the flow (no verifier cookie, or one that does not match the challenge).
+- `GET /auth/oauth/links`: Provider identities attached to the caller's account.
+  - Header: `Authorization: Bearer <token>`
+  - Response: `200 OK` with `[ { "provider": "github", "login": "octocat", "email": "...",
+    "created_at": "..." } ]` — the provider access token is never included.
+- `DELETE /auth/oauth/links/{provider}`: Detach one identity, revoking its token at the provider.
+  - Response: `204`; `404` unknown provider or nothing linked; `409` when it is the account's **only**
+    way in (an OAuth-only account has no password to fall back on).
 
 ### GitHub repositories
 

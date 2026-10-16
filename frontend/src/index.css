@@ -1143,6 +1143,35 @@
     stroke-linecap: round;
   }
 
+  /* Asleep: the same trick, with the curve the other way — relaxed, not happy. */
+  .sw-robot__asleep {
+    opacity: 0;
+  }
+
+  .sw-robot__asleep path {
+    stroke: var(--sw-text);
+    stroke-width: 2.6;
+    stroke-linecap: round;
+  }
+
+  /* The "z"s. Invisible at rest; the sleeping state shows them, and the static
+     opacity there is what `prefers-reduced-motion` lands on once the collapsed
+     animation is over. */
+  .sw-robot__zz {
+    fill: none;
+    stroke: var(--sw-accent);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0;
+  }
+
+  /* The antenna droops while asleep; the transition lives here, on the part, so
+     it also eases back up on the way out of the state. */
+  .sw-robot__antenna {
+    transition: transform var(--sw-t) var(--sw-ease);
+  }
+
   /* The laptop is held in front of the torso and slides into place. */
   .sw-robot__laptop {
     opacity: 0;
@@ -1462,6 +1491,107 @@
 
   .sw-robot[data-state='user-sent'] .sw-robot__head {
     animation: sw-robot-nod 0.5s var(--sw-ease-out) 1;
+  }
+
+  /* --- sleeping: nobody has touched it for a minute ------------------ */
+  @keyframes sw-robot-zz {
+    0% {
+      opacity: 0;
+      transform: translate(-1.5px, 4px) scale(0.8);
+    }
+    40% {
+      opacity: 0.55;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(3px, -11px) scale(1.12);
+    }
+  }
+
+  /* A droop that drifts, rather than the resting sway: asleep is the one state
+     that moves *less* than standing still does. */
+  @keyframes sw-robot-doze {
+    0%,
+    100% {
+      transform: rotate(5deg) translateY(2.5px);
+    }
+    50% {
+      transform: rotate(5.8deg) translateY(3.2px);
+    }
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__eyes {
+    opacity: 0;
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__asleep {
+    opacity: 1;
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__head {
+    /* The droop is declared here as well as animated: under
+       `prefers-reduced-motion` the animation collapses, and the state has to
+       still read as *asleep* rather than as a robot staring at nothing. */
+    transform: rotate(5deg) translateY(2.5px);
+    animation: sw-robot-doze 7.5s var(--sw-ease-inout) infinite;
+  }
+
+  /* Same keyframes, roughly twice the period: the body rises and falls slower. */
+  .sw-robot[data-state='sleeping'] .sw-robot__torso {
+    animation: sw-robot-breathe 7.5s var(--sw-ease-inout) infinite;
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__antenna {
+    transform: rotate(-14deg);
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__led {
+    opacity: 0.12;
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__grill {
+    opacity: 0.22;
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__zz {
+    opacity: 0.55;
+    animation: sw-robot-zz 3.6s var(--sw-ease-inout) infinite;
+  }
+
+  /* Negative delays: the three are out of phase from the first frame, instead of
+     all three leaving on the first beat. */
+  .sw-robot[data-state='sleeping'] .sw-robot__zz:nth-child(2) {
+    animation-delay: -1.2s;
+  }
+
+  .sw-robot[data-state='sleeping'] .sw-robot__zz:nth-child(3) {
+    animation-delay: -2.4s;
+  }
+
+  /* --- wake: the head comes back up, the eyes open wide -------------- */
+  @keyframes sw-robot-wake {
+    0% {
+      transform: rotate(5deg) translateY(2.5px);
+    }
+    45% {
+      transform: rotate(-3.5deg) translateY(-2px);
+    }
+    100% {
+      transform: rotate(0deg) translateY(0);
+    }
+  }
+
+  .sw-robot[data-state='wake'] .sw-robot__head {
+    animation: sw-robot-wake 0.52s var(--sw-ease-out) 1;
+  }
+
+  .sw-robot[data-state='wake'] .sw-robot__pupil {
+    animation: none;
+    transform: scale(1.06, 1.18);
+  }
+
+  .sw-robot[data-state='wake'] .sw-robot__antenna-tip {
+    fill: var(--sw-accent);
   }
 
   /* --- attention from the pointer ----------------------------------- */

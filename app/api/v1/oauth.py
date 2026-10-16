@@ -12,22 +12,23 @@ The flow is the standard authorization-code dance:
 """
 
 import html
+import logging
 import uuid
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_optional_current_user
+from app.api.deps import get_current_user, get_optional_current_user
 from app.core import security
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.oauth import OAuthAccount
 from app.models.user import User
-from app.schemas.oauth import AuthorizeResponse, ProviderAvailability
+from app.schemas.oauth import AuthorizeResponse, LinkedAccount, ProviderAvailability
 from app.services import oauth as oauth_service
 from app.services.oauth import Identity, LinkConflict, OAuthError
 
@@ -38,6 +39,24 @@ ERROR_STATE = "state"
 ERROR_PROVIDER = "provider"
 ERROR_LINK = "link"
 ERROR_DENIED = "denied"
+ERROR_PKCE = "pkce"
+ERROR_LAST_LOGIN = "last_login"
+
+# What a provider row is allowed to disclose back to the SPA: no access token,
+# no scope, nothing the browser could use to call the provider itself.
+_LINKED_FIELDS = ("provider", "provider_login", "email", "created_at")
+
+logger = logging.getLogger("stackwise")
+
+
+def _linked(account: OAuthAccount) -> LinkedAccount:
+    """The public face of a provider row (see `_LINKED_FIELDS`)."""
+    return LinkedAccount(
+        provider=account.provider,
+        login=account.provider_login,
+        email=account.email,
+        created_at=account.created_at,
+    )
 
 # The consent screen the mock provider serves in place of an external one.
 # Placeholders are replaced (not formatted) so the CSS braces stay untouched.
@@ -103,9 +122,72 @@ async def list_providers():
     return oauth_service.configured_providers()
 
 
+@router.get("/oauth/links", response_model=list[LinkedAccount])
+async def list_links(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Which provider identities are attached to the caller's account.
+
+    Answers with the provider's own account name (GitHub's login, the address the
+    provider reported) and nothing else: no access token, no scope, nothing the
+    browser could use to call the provider on its own.
+    """
+    accounts = await oauth_service.linked_accounts(db, user.id)
+    return [_linked(account) for account in accounts]
+
+
+@router.delete("/oauth/links/{provider}", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink(
+    provider: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detach one provider identity from the caller's account.
+
+    Refused (409) when that identity is the account's only way in: an account
+    created through a provider carries no password, so removing its last link
+    would lock the owner out of their own data with no way back in.
+    """
+    if provider not in oauth_service.PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: {provider}"
+        )
+
+    account = await oauth_service.find_account_for_user(db, user.id, provider)
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"{provider} is not connected"
+        )
+
+    if user.password_hash == security.UNUSABLE_PASSWORD:
+        linked = await oauth_service.linked_accounts(db, user.id)
+        if len(linked) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "This is the only way to sign in to this account; "
+                    "connect another provider first"
+                ),
+            )
+
+    # Best effort at the provider, then forget it locally either way: a token we
+    # can no longer use should not stay live over there.
+    try:
+        await oauth_service.revoke_token(
+            oauth_service.get_provider(provider), account.access_token
+        )
+    except OAuthError:
+        logger.warning("Could not revoke the %s token while unlinking", provider, exc_info=True)
+
+    await db.delete(account)
+    await db.commit()
+
+
 @router.get("/oauth/{provider}/authorize", response_model=AuthorizeResponse)
 async def authorize(
     provider: str,
+    response: Response,
     next: str | None = Query(None, max_length=200, description="SPA path to land on"),
     user: User | None = Depends(get_optional_current_user),
 ):
@@ -117,14 +199,31 @@ async def authorize(
     """
     _require_provider(provider)
 
+    # PKCE: the verifier goes into an HttpOnly cookie bound to this browser, the
+    # challenge into the authorize URL, and the callback refuses to spend a code
+    # unless the two agree. Same host as the callback (cookies ignore the port),
+    # so the dev proxy on :3000 and the API on :8001 share it.
+    verifier = security.new_code_verifier()
+    challenge = security.code_challenge(verifier)
+    response.set_cookie(
+        security.OAUTH_PKCE_COOKIE,
+        verifier,
+        max_age=settings.OAUTH_STATE_EXPIRE_MINUTES * 60,
+        path=f"{settings.API_V1_STR}/auth/oauth",
+        httponly=True,
+        samesite="lax",
+        secure=settings.API_PUBLIC_URL.startswith("https"),
+    )
+
     state = security.create_oauth_state(
         provider,
         link_user_id=str(user.id) if user else None,
         next_path=_safe_next_path(next),
+        code_challenge=challenge,
     )
     return {
         "authorization_url": oauth_service.build_authorization_url(
-            oauth_service.get_provider(provider), state
+            oauth_service.get_provider(provider), state, challenge
         )
     }
 
@@ -153,6 +252,7 @@ async def mock_consent(state: str = Query(...)):
 @router.get("/oauth/{provider}/callback")
 async def callback(
     provider: str,
+    request: Request,
     state: str = Query(...),
     code: str | None = Query(None),
     error: str | None = Query(None),
@@ -172,6 +272,14 @@ async def callback(
     if claims.get("provider") != provider:
         return _frontend_redirect(error=ERROR_STATE)
 
+    # PKCE before anything is spent: the verifier must be the one this browser
+    # was handed when the flow started, and it must hash to the challenge the
+    # state carries. A code that leaked to another browser is worthless here.
+    verifier = request.cookies.get(security.OAUTH_PKCE_COOKIE)
+    challenge = claims.get("code_challenge")
+    if not verifier or not challenge or security.code_challenge(verifier) != challenge:
+        return _frontend_redirect(error=ERROR_PKCE)
+
     # A provider that reports a refusal (the user cancelled) sends `error` and
     # no `code` — that is a normal outcome, not a server failure.
     if error:
@@ -181,7 +289,7 @@ async def callback(
 
     provider_config = oauth_service.get_provider(provider)
     try:
-        token = await oauth_service.exchange_code(provider_config, code)
+        token = await oauth_service.exchange_code(provider_config, code, verifier)
         identity = await oauth_service.fetch_identity(provider_config, token["access_token"])
     except OAuthError:
         return _frontend_redirect(error=ERROR_PROVIDER)

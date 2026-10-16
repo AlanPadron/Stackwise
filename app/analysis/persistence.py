@@ -126,14 +126,3 @@ class AnalysisPersistenceService:
 
         await self._db.commit()
 
-    async def count_findings(self, run_id: uuid.UUID) -> int:
-        from sqlalchemy import func
-
-        result = await self._db.execute(
-            select(func.count(Finding.id)).where(Finding.analysis_run_id == run_id)
-        )
-        return int(result.scalar() or 0)
-
-    async def delete_findings(self, run_id: uuid.UUID) -> None:
-        await self._db.execute(delete(Finding).where(Finding.analysis_run_id == run_id))
-        await self._db.commit()

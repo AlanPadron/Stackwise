@@ -36,7 +36,11 @@ os.environ["DEV_OAUTH_MOCK"] = "false"
 atexit.register(lambda: shutil.rmtree(_TEMP_ROOT, ignore_errors=True))
 
 from app.analysis.orchestrator import reset_concurrency_limit  # noqa: E402
-from app.core.ratelimit import reset_agent_chat_limiter, reset_analysis_start_limiter  # noqa: E402
+from app.core.ratelimit import (  # noqa: E402
+    reset_agent_chat_limiter,
+    reset_analysis_start_limiter,
+    reset_auth_limiters,
+)
 from app.db.session import engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services import github as github_service  # noqa: E402
@@ -74,10 +78,12 @@ def _create_schema():
 def _reset_engine_state():
     reset_analysis_start_limiter()
     reset_agent_chat_limiter()
+    reset_auth_limiters()
     reset_concurrency_limit()
     yield
     reset_analysis_start_limiter()
     reset_agent_chat_limiter()
+    reset_auth_limiters()
     reset_concurrency_limit()
 
 
@@ -113,11 +119,11 @@ async def auth_user(client: AsyncClient) -> dict:
     """A freshly registered user: its id, its email and its bearer headers."""
     email = f"user_{uuid.uuid4().hex}@example.com"
     response = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "password123"}
+        "/api/v1/auth/register", json={"email": email, "password": "Probe-pass-2024"}
     )
     assert response.status_code == 201, response.text
     login = await client.post(
-        "/api/v1/auth/login", data={"username": email, "password": "password123"}
+        "/api/v1/auth/login", data={"username": email, "password": "Probe-pass-2024"}
     )
     assert login.status_code == 200, login.text
     return {

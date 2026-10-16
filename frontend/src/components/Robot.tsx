@@ -25,7 +25,15 @@ import { cx } from './ui/cx';
 
 /** What the robot can be doing. Driven by the chat's real request state. */
 export type RobotState =
-    'idle' | 'attentive' | 'thinking' | 'typing' | 'success' | 'error' | 'user-sent';
+    | 'idle'
+    | 'attentive'
+    | 'thinking'
+    | 'typing'
+    | 'success'
+    | 'error'
+    | 'user-sent'
+    | 'sleeping'
+    | 'wake';
 
 export interface RobotProps {
     state?: RobotState;
@@ -160,6 +168,13 @@ export const Robot: React.FC<RobotProps> = ({ state = 'idle', size = 72, classNa
                     <path d="M64 40 q6 -6 12 0" />
                 </g>
 
+                {/* Eyes closed the way the grin closes them: drawn where the
+                    pupils were, so the face keeps its proportions. */}
+                <g className="sw-robot__asleep" fill="none">
+                    <path d="M42 46 q5 3.6 10 0" />
+                    <path d="M68 46 q5 3.6 10 0" />
+                </g>
+
                 {/* A faint speaker bar: the only thing that reads as a mouth at rest. */}
                 <rect className="sw-robot__grill" x="52" y="58" width="16" height="3.4" rx="1.7" />
             </g>
@@ -169,6 +184,14 @@ export const Robot: React.FC<RobotProps> = ({ state = 'idle', size = 72, classNa
                 <circle className="sw-robot__thought" cx="94" cy="30" r="2.6" />
                 <circle className="sw-robot__thought" cx="99" cy="22" r="2.6" />
                 <circle className="sw-robot__thought" cx="104" cy="14" r="2.6" />
+            </g>
+
+            {/* The same corner the thoughts use, for when there is nothing to
+                think about: three "z"s made of strokes, like every other mark. */}
+            <g className="sw-robot__sleep" fill="none">
+                <path className="sw-robot__zz" d="M84 34 h7.5 l-7.5 8.5 h7.5" />
+                <path className="sw-robot__zz" d="M94 23 h6.5 l-6.5 7.5 h6.5" />
+                <path className="sw-robot__zz" d="M103 13 h5.5 l-5.5 6.5 h5.5" />
             </g>
 
             {/* One flash of the accent, when the answer landed. */}

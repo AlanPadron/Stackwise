@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { LANGUAGE_LABEL, LANGUAGE_SHORT, LANGUAGES } from '../i18n/dictionary';
 import { useI18n } from '../i18n/I18nContext';
+import { LinkedAccounts } from './LinkedAccounts';
 import { GlobeIcon, MailIcon, MoonIcon, SlidersIcon, SunIcon, Switch } from './ui';
 import { cx } from './ui/cx';
 
@@ -117,6 +118,8 @@ export const SettingsMenu: React.FC = () => {
                             </div>
                         }
                     />
+
+                    <LinkedAccounts />
 
                     <a
                         href={CONTACT_MAILTO}

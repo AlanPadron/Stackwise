@@ -11,8 +11,28 @@ export interface ProviderAvailability {
 
 export type OAuthProvider = keyof ProviderAvailability;
 
+/** One provider identity attached to the signed-in account (no token, ever). */
+export interface LinkedAccount {
+    provider: OAuthProvider | string;
+    login: string | null;
+    email: string | null;
+    created_at: string | null;
+}
+
 export const fetchProviders = async (): Promise<ProviderAvailability> =>
     (await apiClient.get('/auth/providers')).data;
+
+/** The provider identities this account can sign in with. */
+export const fetchLinkedAccounts = async (): Promise<LinkedAccount[]> =>
+    (await apiClient.get('/auth/oauth/links')).data;
+
+/**
+ * Detach a provider identity. The API refuses (409) when it is the account's
+ * only way in, and that refusal is what the caller shows.
+ */
+export const unlinkProvider = async (provider: OAuthProvider): Promise<void> => {
+    await apiClient.delete(`/auth/oauth/links/${provider}`);
+};
 
 /**
  * The provider URL to send the browser to. The bearer token, when present,

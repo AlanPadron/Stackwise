@@ -14,6 +14,7 @@ configuration is reported by setting name instead of failing per request.
 
 import contextlib
 import json
+import logging
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,7 +25,7 @@ from app.agent.cloudflare import DEFAULT_MODEL_ID, CloudflareBackend
 from app.agent.registry import resolve_backend
 from app.api.v1.agent import agent_backend
 from app.core.config import settings
-from app.main import app
+from app.main import app, warn_about_the_findings_agent
 
 ACCOUNT_ID = "0123456789abcdef0123456789abcdef"
 API_TOKEN = "cf-secret-token-that-must-never-be-echoed"
@@ -173,6 +174,35 @@ async def test_generating_without_configuration_raises_instead_of_calling_out():
 
 
 @pytest.mark.parametrize(
+    "account_id",
+    [
+        "https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef",
+        "ops@example.com",
+        "..",
+        "../billing",
+        "0123456789abcdef/../billing",
+    ],
+)
+def test_an_account_id_that_is_not_an_account_id_is_named(account_id):
+    """A pasted dashboard URL or e-mail is the likely mistake; the setting is named."""
+    backend = CloudflareBackend(account_id=account_id, api_token=API_TOKEN)
+
+    reason = backend.unavailable_reason()
+
+    assert reason is not None and "CLOUDFLARE_ACCOUNT_ID" in reason
+
+
+async def test_an_account_id_with_a_path_in_it_never_reaches_the_network():
+    """The id is interpolated into the request path, so `..` must not get past here."""
+    backend = backend_at("http://127.0.0.1:1", account_id="0123456789abcdef/../billing")
+
+    with pytest.raises(AgentUnavailable) as raised:
+        await backend.complete(conversation(), max_new_tokens=32)
+
+    assert "CLOUDFLARE_ACCOUNT_ID" in str(raised.value)
+
+
+@pytest.mark.parametrize(
     "model_id",
     ["Qwen/Qwen2.5-0.5B-Instruct", "@cf/../../etc/passwd", "@cf/qwen/x y", "cf/qwen/model"],
 )
@@ -209,6 +239,43 @@ def test_an_empty_model_id_falls_back_to_the_reference_model():
 
     assert backend.unavailable_reason() is None
     assert backend.model == DEFAULT_MODEL_ID
+
+
+# --- the startup diagnostic ---------------------------------------------------
+
+
+def test_a_misconfigured_backend_is_reported_at_startup(monkeypatch, caplog):
+    """The log says what `/agent/status` would say, so the cause precedes the browser."""
+    monkeypatch.setattr(settings, "AGENT_BACKEND", "cloudflare")
+    monkeypatch.setattr(settings, "CLOUDFLARE_ACCOUNT_ID", "")
+    monkeypatch.setattr(settings, "CLOUDFLARE_API_TOKEN", "")
+
+    with caplog.at_level(logging.WARNING):
+        warn_about_the_findings_agent()
+
+    assert "CLOUDFLARE_ACCOUNT_ID" in caplog.text
+    assert "CLOUDFLARE_API_TOKEN" in caplog.text
+
+
+def test_a_configured_backend_does_not_warn_at_startup(monkeypatch, caplog):
+    monkeypatch.setattr(settings, "AGENT_BACKEND", "cloudflare")
+    monkeypatch.setattr(settings, "CLOUDFLARE_ACCOUNT_ID", ACCOUNT_ID)
+    monkeypatch.setattr(settings, "CLOUDFLARE_API_TOKEN", API_TOKEN)
+
+    with caplog.at_level(logging.WARNING):
+        warn_about_the_findings_agent()
+
+    assert caplog.text == ""
+
+
+def test_a_disabled_agent_is_not_a_misconfiguration(monkeypatch, caplog):
+    """`AGENT_BACKEND=none` is a decision, not something to warn about on every boot."""
+    monkeypatch.setattr(settings, "AGENT_BACKEND", "none")
+
+    with caplog.at_level(logging.WARNING):
+        warn_about_the_findings_agent()
+
+    assert caplog.text == ""
 
 
 # --- the request --------------------------------------------------------------

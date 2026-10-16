@@ -1,6 +1,6 @@
 # Stackwise
 
-![version](https://img.shields.io/badge/version-1.7.0--alpha-c2410c)
+![version](https://img.shields.io/badge/version-1.8.0--alpha-c2410c)
 ![status](https://img.shields.io/badge/status-pre--release-a16207)
 ![backend](https://img.shields.io/badge/backend-FastAPI-2563a8)
 ![frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-2563a8)
@@ -142,10 +142,16 @@ database URL, public origins, the optional OAuth providers, the analysis ceiling
 run the findings agent. The full list, with what each variable does, is in
 [Settings](#settings).
 
+Social sign-in needs no code to switch on: fill `GOOGLE_CLIENT_ID`/`_SECRET` or
+`GITHUB_CLIENT_ID`/`_SECRET` and the buttons appear (see [OAuth sign-in](#oauth-sign-in-google-github) for
+the two consoles and the redirect URI to register). To exercise the whole round-trip *before* those
+credentials exist, set `DEV_OAUTH_MOCK=true`, restart the API and use the third button on the
+sign-in form.
+
 ### 4. Tests and a production build
 
 ```bash
-pytest                                   # 271 tests, ~75s
+pytest                                   # 317 tests, ~80s (it hashes passwords for real)
 npm run build --prefix frontend          # tsc + vite build → frontend/dist
 npm run preview --prefix frontend        # serves that build (also the PWA) on :4173
 ```
@@ -181,8 +187,8 @@ run — severity chips and the finding cards, each with its tool, rule id, file 
 
 ### The chrome that is always there
 
-- bottom-right: the settings drawer (theme, language, contact) and, above it, **NIom** — the robot
-  button only exists while a session does;
+- bottom-right: the settings drawer (theme, language, the account's sign-in methods, contact) and,
+  above it, **NIom** — the robot button only exists while a session does;
 - bottom-left: the **release version** of the running build;
 - top (when it matters): a single banner that reports a lost connection, or an update that is waiting
   to be applied.
@@ -273,6 +279,12 @@ reference model is `@cf/qwen/qwen2.5-coder-32b-instruct` (32k context, billed pe
 overridable with `CLOUDFLARE_MODEL_ID`. The two are interchangeable by design: nothing above the seam
 knows which one answered, and the answer itself reports it (`backend`, `model` in the response).
 
+The account id is the 32-character one in the dashboard URL — not the account e-mail and not a URL: a
+value that is neither is refused before any request exists (it is interpolated into the request path),
+and the same sentence is written to the startup log once instead of waiting to be discovered as a 404.
+`curl -s localhost:8001/api/v1/agent/status` is the check: it answers with the runtime and the model
+when the pair works, and with the setting to fix when it does not.
+
 Either way the feature is honest about what it is running: with no runtime available, `/agent/status`
 reports `available: false` with the reason and the chat answers `503` — NIom says in its own voice
 that it cannot read the findings yet. Nothing is ever generated without a model behind it, and the
@@ -314,21 +326,35 @@ NIom has a small robot, drawn as one inline `<svg>` and animated in CSS (`compon
 the `.sw-robot*` block in `index.css`) — no image, no font, no animation library, sharp at any size
 and recoloured by the theme tokens.
 
-It is a *state machine wired to the request*, not a decoration on a timer:
+It is a *state machine wired to the request*, not a decoration on a timer — with one clock of its own,
+the nap, because the one thing the server cannot tell it is that the user has stopped reading:
 
 | State | When | What it shows |
 |---|---|---|
 | `idle` | nothing happening | slow breathing, a blink every ~5s, a slight head sway |
 | `attentive` | the composer has focus or text, and the user is not thinking about something else | taller eyes, head tilted toward the input, faster breath |
 | `thinking` | a request is out and no text has arrived | eyes looking away, three dots rising, the chest LEDs pulsing, the antenna lit |
-| `typing` | fragments are arriving | a small laptop slides out, arms alternate on the keyboard, a caret blinks on the code |
+| `typing` | there is an answer still being written | a small laptop slides out, arms alternate on the keyboard, a caret blinks on the code |
 | `success` | the answer completed | eyes close into a smile, one nod, an accent flash |
 | `error` | the request failed | eyes narrowed and tilted, one short shake, the antenna in the alert colour |
 | `user-sent` | the moment the message goes | a short nod, then straight into thinking |
+| `sleeping` | a minute with the panel open and no interaction at all | eyes closed, head down and tilted, the antenna drooped, LEDs out, three "z"s drifting up |
+| `wake` | any interaction while it was asleep | the head comes back up with a small overshoot and the eyes open wide |
+
+The answer is *written*, not pasted: the server's fragments are appended to a growing prefix that a
+tick reveals at reading pace (`hooks/usePacedText.ts`), so a runtime that hands back a whole paragraph
+in one frame still types it out — and the turn is only committed once the text has actually been
+written, so the bubble never jumps from half a sentence to the whole one. The record is never
+rewritten on the way: what is rendered is always a prefix of what arrived.
+
+The nap is armed only while the panel is open and nothing is in flight, and every interaction —
+typing, the pointer over the panel, scrolling the transcript, sending — re-arms it from scratch.
+Anything that touches it while it sleeps wakes it with the `wake` pose instead of a jolt, and a
+**Stop** while the model is writing returns the robot to rest with the partial answer kept and marked
+*Cancelled* — nothing failed, so nothing looks wrong.
 
 Pointer hover (over the head) is CSS only and lives behind `@media (hover: hover)`, so a touch screen
-never depends on an event that cannot fire. A **Stop** while the model is writing returns the robot to
-rest with the partial answer kept and marked *Cancelled* — nothing failed, so nothing looks wrong.
+never depends on an event that cannot fire.
 
 Accessibility: the figure is `aria-hidden` and never focusable — what the agent is doing is said in
 words by the chat's own status line (`role="status"`), which is the accessible source of truth, so a
@@ -390,11 +416,12 @@ Stackwise/
 │       ├── api/            axios client (+ JWT), oauth calls, agent calls
 │       ├── components/     AppShell (sidebar/drawer), AppSidebar, AgentChat, Robot, SettingsMenu, PwaStatus, VersionBadge, ui/
 │       ├── context/        AuthContext, ThemeContext, SplashContext
-│       ├── hooks/          useFocusTrap — Tab containment, Escape and focus return for dialogs
+│       ├── hooks/          useFocusTrap — Tab containment, Escape and focus return for dialogs;
+│       │                   usePacedText — reveals a streamed answer as it is written
 │       ├── i18n/           dictionary (en/es) + provider
 │       └── index.css       design tokens + .sw-* classes, and the small-screen/safe-area layer
 ├── docs/                   API_CONTRACT.md, ANALYSIS_ENGINE.md, preview captures
-├── tests/                  pytest + httpx ASGI suite (271 tests)
+├── tests/                  pytest + httpx ASGI suite (317 tests)
 ├── PROGRESS_REPORT.json    the working log: changes, verifications, open items
 └── alembic/                baseline schema revision
 ```
@@ -453,7 +480,8 @@ Base path `/api/v1`, JSON, bearer tokens. `GET /health` lives outside it. The co
 | Area | Endpoints |
 |---|---|
 | Accounts | `POST /auth/register`, `POST /auth/login` (form data), `GET /auth/me` |
-| Providers | `GET /auth/providers`, `GET /auth/oauth/{provider}/authorize`, `GET /auth/oauth/{provider}/callback` |
+| Providers | `GET /auth/providers`, `GET /auth/oauth/{provider}/authorize`, `GET /auth/oauth/{provider}/callback` (PKCE, S256) |
+| Connected accounts | `GET /auth/oauth/links`, `DELETE /auth/oauth/links/{provider}` |
 | Repositories | `GET /github/repositories`, `POST /projects/from-repo` (creates the project and its first run) |
 | Projects | `GET /projects`, `GET/PATCH/DELETE /projects/{id}` |
 | Analyses | `GET /projects/{id}/analyses` (history, `X-Total-Count`), `GET /analyses/{id}`, `GET /analyses/{id}/findings`, `GET /findings/{id}` |
@@ -465,10 +493,18 @@ Notable behaviour: findings and run history are paginated and filterable (`sever
 runs per project and per user; an oversized body is refused before it is read; a database outage
 becomes a fixed `503` detail with the driver error only in the log.
 
-OAuth is the plain authorization-code flow with a signed `state`, and the session token comes back in
-the URL **fragment** (`#token=…`), which is never sent to a server and never leaks through `Referer`.
-An OAuth-only account is created with an unusable password hash, so it can never be used through the
-password endpoint. Linking a provider that already belongs to someone else is refused.
+OAuth is the plain authorization-code flow with a signed `state` **and PKCE** (S256): the challenge
+travels in the signed state to the provider, the verifier lives in a short-lived HttpOnly cookie here,
+and the callback refuses a code unless the two agree — so an intercepted authorization code is
+worthless on its own. The session token comes back in the URL **fragment** (`#token=…`), which is
+never sent to a server and never leaks through `Referer`. An OAuth-only account is created with an
+unusable password hash, so it can never be used through the password endpoint; linking a provider that
+already belongs to someone else is refused.
+
+The settings drawer's **sign-in methods** section is where connections are managed: every provider the
+server can offer (plus any that is already linked) gets a row with Connect or Disconnect. Disconnecting
+revokes the token at the provider, and the API refuses (409) to remove an account's last identity,
+because an account created through a provider has no password to fall back on.
 
 ---
 
@@ -505,7 +541,8 @@ truth and `.env.example` lists every name.
 | Group | Settings |
 |---|---|
 | Runtime | `API_V1_STR`, `APP_VERSION`, `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `CORS_ORIGINS` |
-| Database | `SQLALCHEMY_URL` (async driver), `DATABASE_URL`, `SQLALCHEMY_ECHO` |
+| Accounts | `AUTH_REGISTER_RATE_LIMIT_PER_MINUTE`, `AUTH_LOGIN_RATE_LIMIT_PER_MINUTE` — the password policy itself is not configurable (see [Security notes](#security-notes)) |
+| Database | `SQLALCHEMY_URL` (async driver), `DATABASE_URL`, `SQLALCHEMY_ECHO`, `SQLALCHEMY_POOL_MODE` (how a hosted pooler is treated) |
 | Public origins | `API_PUBLIC_URL` (builds provider redirect URIs), `FRONTEND_URL` (where OAuth returns the browser) |
 | Providers | `GOOGLE_CLIENT_ID`/`_SECRET`, `GITHUB_CLIENT_ID`/`_SECRET`, `GITHUB_API_BASE_URL`, `OAUTH_STATE_EXPIRE_MINUTES` — an empty pair disables that provider |
 | Analysis ceiling | `ANALYSIS_ENABLED_ANALYZERS`, `ANALYSIS_RUFF_SELECT`, per-tool timeouts, complexity/maintainability thresholds |
@@ -563,7 +600,7 @@ string fails the build instead of shipping an empty label.
 
 ## How it is built
 
-- **277 tests** (`pytest` + httpx against the ASGI app) exercising the real analyzers against a
+- **317 tests** (`pytest` + httpx against the ASGI app) exercising the real analyzers against a
   throwaway database: archive attacks, path traversal, analyzer isolation and timeouts, severity
   mapping, fingerprints and dedup, lifecycle transitions, ownership, pagination, rate limits, the
   agent's bounds and the `503` path when its runtime is absent, the hosted backend over a loopback
@@ -595,13 +632,28 @@ static directory — plus a database.
 ### 1. Database
 
 Either the SQLite file (fine for a single always-on container, not for a fleet) or PostgreSQL. For
-**Supabase**: take the connection string from the dashboard (Session pooler, port 5432) and set both
-spellings, because Alembic migrates through the synchronous one:
+**Supabase**: take the connection string from the dashboard and set both spellings, because Alembic
+migrates through the synchronous one:
 
 ```dotenv
-SQLALCHEMY_URL=postgresql+asyncpg://<user>:<password>@<host>:5432/<db>?ssl=require
-DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<db>?sslmode=require
+# Session pooler (5432) — a server connection per client:
+SQLALCHEMY_URL=postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?ssl=require
+DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+
+# Transaction pooler (6543) — the app detects the port and disables the prepared
+# statement caches a transaction pooler cannot honour; nothing else to set:
+# SQLALCHEMY_URL=postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?ssl=require
+
+# Direct connection, or a pooler that listens somewhere else
+# (`SQLALCHEMY_POOL_MODE=transaction|direct|auto`):
+# SQLALCHEMY_URL=postgresql+asyncpg://postgres:<password>@db.<ref>.supabase.co:5432/postgres?ssl=require
 ```
+
+`SQLALCHEMY_POOL_MODE=auto` decides from the port: on `:6543` it opens no long-lived connection and
+turns off SQLAlchemy's and asyncpg's prepared-statement caches, which is what a transaction-mode pooler
+needs — without it the first query fails with `prepared statement "__asyncpg_stmt_1__" does not exist`.
+Both async drivers are already declared in `requirements.txt` (`asyncpg` for the app,
+`psycopg2-binary` for this step).
 
 Then create the schema once, from a machine that can reach the database:
 
@@ -629,7 +681,7 @@ or without Docker:
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-`docker-compose.yml` runs the same app beside a development PostgreSQL, for a local end-to-end check.
+`docker-compose.yml` runs the same app beside a development PostgreSQL, for a local end-to-end check. It reads `SECRET_KEY` and `POSTGRES_PASSWORD` from `.env` and refuses to start when either is missing; no secret is hard-coded.
 
 Two things a host must provide: a filesystem that is writable while a run is executing (the engine
 extracts to a temp workspace and deletes it afterwards) and, if the container is small, enough memory
@@ -661,10 +713,11 @@ CORS configuration entirely.
 | Variable | Why |
 |---|---|
 | `SECRET_KEY` | required; the app will not start without it |
+| `POSTGRES_PASSWORD` | required by `docker-compose.yml` for the bundled database; compose refuses to start without it |
 | `SQLALCHEMY_URL` / `DATABASE_URL` | the deployed database (see above) |
 | `CORS_ORIGINS` | **must** be the SPA's origin, not the default `["*"]` |
 | `API_PUBLIC_URL`, `FRONTEND_URL` | the provider redirect URIs are built from the first and the browser is returned to the second |
-| `GOOGLE_CLIENT_ID` / `_SECRET`, `GITHUB_CLIENT_ID` / `_SECRET` | optional; an empty pair simply disables that provider in the UI |
+| `GOOGLE_CLIENT_ID` / `_SECRET`, `GITHUB_CLIENT_ID` / `_SECRET` | optional; an empty pair simply disables that provider in the UI (see [OAuth sign-in](#oauth-sign-in-google-github)) |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | optional; needed only if `AGENT_BACKEND=cloudflare` |
 
 Keep `DEV_OAUTH_MOCK=false` (the default). It registers a local sign-in stand-in that must never be
@@ -685,10 +738,27 @@ What the code does, and what a deployment still has to get right:
 
 - **`SECRET_KEY` has no default** and the app refuses to start without it. Sessions are HS256 JWTs
   signed with it: rotating it invalidates every session at once.
+- **Accounts: the policy is the server's.** A password needs 10+ characters, at least one letter and
+  one digit, at most 72 **bytes** (the part bcrypt actually reads — a longer one is refused rather
+  than silently truncated) and cannot be built on a common base (`password`, `qwerty`, `stackwise`…).
+  The sign-up form mirrors the length/mix rule to answer without a round-trip; only the API decides.
+  Addresses are stored and compared lowercased, so `User@x.com` and `user@x.com` are one account
+  rather than two — whichever way it was created, including through a provider.
+- **Both unauthenticated endpoints are rate limited** per client address: registration at 5/min, login
+  at 10/min counted **per account and per address** in one atomic check, so a burst against one
+  account is refused even from a fresh address and a shared address cannot be used to lock out its
+  neighbours. A refused attempt is a `429` with `Retry-After`. This state is process-local (see
+  `app/core/ratelimit.py`): with several workers, or behind a proxy that does not pass the real
+  address, the same ceiling belongs at the edge too.
+- **Login cannot be used to enumerate accounts**: an unknown address and a wrong password produce the
+  same status, the same body, and the same work — the unknown path still pays for a bcrypt
+  verification against a dummy hash. Registration does say `Email already registered` (a deliberate
+  trade for a usable sign-up form; it leaks only that an address has an account here).
 - **CORS defaults to `["*"]`.** Browsers reject a wildcard together with credentials, so this fails
   closed rather than open, but it must be narrowed to the SPA's origin for a deployment.
 - **`DEV_OAUTH_MOCK` registers a local sign-in stand-in** (`/auth/oauth/mock`) that signs anyone in as
-  a fixed `*.local` identity. It is off by default and stays out of the OpenAPI schema; the API logs a
+  a fixed `example.com` identity (the address RFC 2606 reserves for documentation, so it cannot
+  belong to anyone). It is off by default and stays out of the OpenAPI schema; the API logs a
   warning at startup if it is ever switched on. Never enable it on a reachable host.
 - **Secrets stay on the server.** `SECRET_KEY`, database URLs, OAuth client secrets, the GitHub token
   and `CLOUDFLARE_API_TOKEN` are read by the API process only. The SPA has exactly one build-time
@@ -749,6 +819,11 @@ What the code does, and what a deployment still has to get right:
 - A real isolation boundary — see the engine doc.
 - Postgres as the default backend (the URL is configurable, the baseline migration exists and the
   async driver is installed; SQLite is what development uses).
+- **Source snapshots are local.** The downloaded zipball and the extracted tree live in the system
+  temp directory for the length of a run and are deleted with it, and the analyzers are local
+  processes — so a run has to happen on the machine that holds both. Shared object storage for
+  snapshots (Supabase Storage/S3) is not implemented: it only becomes necessary once runs are
+  dispatched to a different host from the one that downloaded them.
 - Cross-run trend analysis; per-project analyzer versions; password reset; refresh tokens; provider
   token refresh.
 - Live run status in the SPA (no polling), a dedicated 404 screen, and project edit/delete in the UI
@@ -765,6 +840,17 @@ An **alpha pre-release**, so the version carries a pre-release tag. It lives in 
 `frontend/package.json`, and `frontend/src/config.ts`, which renders it in the badge every screen
 shows. The analysis engine has its own `ENGINE_VERSION` because it can change shape without the
 application version moving; it is recorded on every run.
+
+### 1.8.0-alpha
+
+- **No secrets in the repository.** `docker-compose.yml` reads `SECRET_KEY` and `POSTGRES_PASSWORD`
+  from the environment (or `.env`) and refuses to start when either is missing; the development values
+  that were hard-coded in it are gone. A `.dockerignore` keeps `.env`, `venv/`, `.git`, local databases
+  and caches out of the image, which previously `COPY . .` would have baked in. `.gitignore` now covers
+  keys and certificates, every SQLite file pattern, `venv/`, and the lint/coverage caches.
+- **Breaking for compose users:** set `POSTGRES_PASSWORD` and `SECRET_KEY` in `.env` before
+  `docker compose up`. The old values remain in git history: any environment that ran with them must
+  rotate them.
 
 ### 1.7.0-alpha
 
@@ -787,6 +873,26 @@ application version moving; it is recorded on every run.
   project never holds two in-flight runs, so `ANALYSIS_MAX_ACTIVE_RUNS_PER_PROJECT` can no longer
   bind. It stays as the documented platform ceiling (removing the setting would break any `.env` that
   sets it); the per-user ceiling is the one the import enforces.
+- **Both future connections are checked before they are used.** `CLOUDFLARE_ACCOUNT_ID` is validated
+  now (it is interpolated into the outbound path, and a dashboard URL or the account e-mail pasted
+  into it became an unhelpful 404 far from its cause), and a misconfigured agent runtime — a hosted
+  backend with a missing or malformed setting — is reported once in the startup log, in the same words
+  `GET /api/v1/agent/status` answers with. A deliberately disabled agent (`AGENT_BACKEND=none`) stays
+  quiet.
+- **A hosted pooler is configured, not guessed at.** The async engine recognises a transaction-mode
+  pooler (Supabase's `:6543`) and turns off both prepared-statement caches and connection pooling for
+  it, which is the difference between working and `prepared statement "__asyncpg_stmt_1__" does not
+  exist` on the first query; `SQLALCHEMY_POOL_MODE=direct|transaction` overrides the detection for a
+  pooler listening elsewhere. `pool_pre_ping` is now unconditional, so a connection the server closed
+  while idle is replaced instead of failing the request, and `.env.example` carries the three Supabase
+  spellings ready to paste.
+- **NIom writes, waits and sleeps.** The answer is no longer pasted when the runtime hands it over:
+  the fragments feed a growing prefix that is revealed at reading pace (`hooks/usePacedText.ts`), so
+  the robot is on the laptop for the whole of the writing and the turn is only committed once the text
+  has actually been written. Two states joined the machine — `sleeping`, after a minute with the panel
+  open and no interaction at all (eyes closed, head down, antenna drooped, LEDs out, "z"s drifting
+  up), and `wake`, the small overshoot that brings it back — armed by a single timer that every
+  interaction re-arms, and skipped entirely while a request is in flight.
 
 ### 1.6.0-alpha
 

@@ -14,9 +14,9 @@ import { Button, GitHubIcon, GoogleIcon, TerminalIcon } from './ui';
 const PROVIDER_ORDER: OAuthProvider[] = ['google', 'github', 'mock'];
 
 const PROVIDER_ICON: Record<OAuthProvider, React.ReactNode> = {
-    google: <GoogleIcon size={17} />,
-    github: <GitHubIcon size={17} />,
-    mock: <TerminalIcon size={17} />,
+    google: <GoogleIcon size={20} />,
+    github: <GitHubIcon size={20} />,
+    mock: <TerminalIcon size={20} />,
 };
 
 const PROVIDER_LABEL = {
@@ -96,17 +96,28 @@ export const OAuthButtons: React.FC<{ next?: string }> = ({ next }) => {
         <div className="mt-7">
             <Divider />
 
-            <div className="flex flex-col gap-3">
+            {/* Logo-only: the two (three with the dev stand-in) provider marks,
+                side by side and centred, at the size of the app's other square
+                controls. The name lives in the accessible label and the tooltip,
+                so nothing is lost to a screen reader. */}
+            <div className="flex flex-wrap items-start justify-center gap-3">
                 {enabled.map((provider) => (
                     <Button
                         key={provider}
-                        className="w-full min-h-[2.75rem] md:min-h-0"
+                        size="icon"
+                        className="h-12 w-12"
                         onClick={() => start(provider)}
                         disabled={pending !== null}
                         loading={pending === provider}
+                        aria-label={t('oauth.continueWith', {
+                            provider: t(PROVIDER_LABEL[provider]),
+                        })}
+                        title={t('oauth.continueWith', { provider: t(PROVIDER_LABEL[provider]) })}
                     >
-                        {PROVIDER_ICON[provider]}
-                        {t('oauth.continueWith', { provider: t(PROVIDER_LABEL[provider]) })}
+                        {/* The spinner stands in for the mark: a 48px square has
+                            no room for both, and `loading` already sets
+                            `aria-busy` while the label stays on the button. */}
+                        {pending !== provider && PROVIDER_ICON[provider]}
                     </Button>
                 ))}
             </div>

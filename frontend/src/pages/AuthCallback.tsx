@@ -14,6 +14,7 @@ const ERROR_KEY: Record<string, TranslationKey> = {
     state: 'oauth.errorState',
     provider: 'oauth.errorProvider',
     link: 'oauth.errorLink',
+    pkce: 'oauth.errorPkce',
 };
 
 const AuthCallback: React.FC = () => {

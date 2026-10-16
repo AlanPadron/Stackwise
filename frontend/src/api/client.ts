@@ -51,7 +51,10 @@ export const messageFromBody = (data: unknown, fallback: string): string => {
         if (Array.isArray(detail) && detail.length > 0) {
             const first: unknown = detail[0];
             if (first && typeof first === 'object' && 'msg' in first && typeof first.msg === 'string') {
-                return first.msg;
+                // Pydantic prefixes a validator's own `ValueError` with this, so
+                // a refusal from the password policy reads as the sentence it
+                // was written as (`Password is too common`).
+                return first.msg.replace(/^Value error, /, '');
             }
         }
     }

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.agent.registry import resolve_backend
 from app.analysis.config import ENGINE_VERSION
 from app.analysis.status import AnalysisStatusService
 from app.api.v1 import auth, oauth, github, projects, analyses, dashboard, agent, health
@@ -39,6 +40,7 @@ async def lifespan(_: FastAPI):
     A run left `pending`/`running` by a crash would otherwise look busy forever;
     `reap_stale_runs` moves it to `failed` with `error_category=stale_run`.
     """
+    warn_about_the_findings_agent()
     async with AsyncSessionLocal() as session:
         try:
             reaped = await AnalysisStatusService(session).reap_stale_runs(grace_seconds=0)
@@ -47,6 +49,22 @@ async def lifespan(_: FastAPI):
         except Exception:  # noqa: BLE001 - recovery must never block startup
             logger.exception("Stale analysis run recovery failed at startup")
     yield
+
+
+def warn_about_the_findings_agent() -> None:
+    """Say at boot what `GET /api/v1/agent/status` will say later.
+
+    The agent never fails a request on configuration — it answers 503 with the
+    reason — so a hosted backend whose token or account id is missing or
+    malformed would otherwise only be noticed from the browser. This puts the
+    same sentence in the startup log. A deliberately disabled agent (`none`) is
+    not a misconfiguration and stays quiet.
+    """
+    if (settings.AGENT_BACKEND or "").strip().lower() == "none":
+        return
+    reason = resolve_backend().unavailable_reason()
+    if reason is not None:
+        logger.warning("The findings agent will answer 503: %s", reason)
 
 
 app = FastAPI(

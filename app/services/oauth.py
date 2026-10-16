@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import normalize_email
 from app.models.oauth import OAuthAccount
 
 HTTP_TIMEOUT = 15.0
@@ -140,7 +141,7 @@ def callback_url(provider: str, **params: str) -> str:
     )
 
 
-def build_authorization_url(provider: Provider, state: str) -> str:
+def build_authorization_url(provider: Provider, state: str, code_challenge: str) -> str:
     if provider.is_mock:
         # The "provider" is a consent screen served by this API, so the whole
         # round-trip stays on this machine.
@@ -156,6 +157,10 @@ def build_authorization_url(provider: Provider, state: str) -> str:
         "response_type": "code",
         "scope": provider.scope,
         "state": state,
+        # PKCE (RFC 7636), S256: the verifier stays in an HttpOnly cookie here, so
+        # an intercepted authorization code is useless on its own.
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
     if provider.name == "google":
         # Show the account chooser instead of silently reusing the last session.
@@ -164,7 +169,7 @@ def build_authorization_url(provider: Provider, state: str) -> str:
     return f"{provider.authorize_url}?{urlencode(params)}"
 
 
-async def exchange_code(provider: Provider, code: str) -> dict[str, Any]:
+async def exchange_code(provider: Provider, code: str, code_verifier: str) -> dict[str, Any]:
     """Trade the authorization code for the provider's access token."""
     if provider.is_mock:
         if code != MOCK_CODE:
@@ -181,6 +186,7 @@ async def exchange_code(provider: Provider, code: str) -> dict[str, Any]:
                 "code": code,
                 "grant_type": "authorization_code",
                 "redirect_uri": redirect_uri(provider),
+                "code_verifier": code_verifier,
             },
             headers={"Accept": "application/json"},
         )
@@ -195,16 +201,60 @@ async def exchange_code(provider: Provider, code: str) -> dict[str, Any]:
     return payload
 
 
+async def revoke_token(provider: Provider, access_token: Optional[str]) -> None:
+    """Ask the provider to invalidate a token this API is about to forget.
+
+    Disconnecting an account should not leave a working credential behind on the
+    provider's side. Best effort: the caller unlinks locally even when this
+    raises, because a live token we no longer track is the worse of the two
+    outcomes. `OAuthError` marks a refusal the caller can log.
+    """
+    if not access_token or provider.is_mock:
+        return
+
+    client_id, client_secret = credentials(provider)
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        if provider.name == "github":
+            response = await client.delete(
+                f"{settings.GITHUB_API_BASE_URL}/applications/{client_id}/token",
+                auth=(client_id, client_secret),
+                json={"access_token": access_token},
+                headers={"Accept": "application/json"},
+            )
+            # 404 means the token was already gone, which is the desired state.
+            if response.status_code not in (204, 404):
+                raise OAuthError(f"Token revocation failed ({response.status_code})")
+            return
+
+        response = await client.post(
+            "https://oauth2.googleapis.com/revoke",
+            data={"token": access_token},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        # 400 is Google's answer for a token that is already invalid or unknown.
+        if response.status_code not in (200, 400):
+            raise OAuthError(f"Token revocation failed ({response.status_code})")
+
+
 async def fetch_identity(provider: Provider, access_token: str) -> Identity:
     if provider.is_mock:
         if access_token != MOCK_ACCESS_TOKEN:
             raise OAuthError("Mock access token rejected")
         return MOCK_IDENTITY
     if provider.name == "google":
-        return await _google_identity(access_token)
-    if provider.name == "github":
-        return await _github_identity(access_token)
-    raise OAuthError(f"Unknown provider: {provider.name}")
+        identity = await _google_identity(access_token)
+    elif provider.name == "github":
+        identity = await _github_identity(access_token)
+    else:
+        raise OAuthError(f"Unknown provider: {provider.name}")
+    # One casing for an address everywhere it is compared or stored: an account
+    # created by signing in with Google as `User@x.com` must be the same account
+    # that the password form finds when it types `user@x.com`.
+    return Identity(
+        provider_user_id=identity.provider_user_id,
+        email=normalize_email(identity.email),
+        login=identity.login,
+    )
 
 
 async def _get_json(url: str, access_token: str, params: Optional[dict] = None) -> Any:
@@ -278,3 +328,13 @@ async def find_account_for_user(
         )
     )
     return result.scalars().first()
+
+
+async def linked_accounts(db: AsyncSession, user_id: uuid.UUID) -> list[OAuthAccount]:
+    """Every provider identity attached to one local user, stable order."""
+    result = await db.execute(
+        select(OAuthAccount)
+        .where(OAuthAccount.user_id == user_id)
+        .order_by(OAuthAccount.provider)
+    )
+    return list(result.scalars().all())

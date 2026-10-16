@@ -80,15 +80,6 @@ class AnalyzerRegistry:
             if name in allowed and entry.spec.applies_to(language)
         )
 
-    def applicable_languages(self, *, enabled: Optional[Iterable[str]] = None) -> frozenset[str]:
-        allowed = set(enabled) if enabled is not None else set(self._entries)
-        return frozenset(
-            language
-            for name, entry in self._entries.items()
-            if name in allowed
-            for language in entry.spec.languages
-        )
-
     def security_analyzers(self, *, enabled: Optional[Iterable[str]] = None) -> tuple[str, ...]:
         allowed = set(enabled) if enabled is not None else set(self._entries)
         return tuple(

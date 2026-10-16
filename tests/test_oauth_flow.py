@@ -35,7 +35,7 @@ def _configure(monkeypatch, provider: str = "google") -> None:
 
 
 def _stub_provider(monkeypatch, identity: Identity, access_token: str = "provider-token") -> None:
-    async def exchange_code(provider, code):
+    async def exchange_code(provider, code, code_verifier):
         return {"access_token": access_token, "scope": provider.scope}
 
     async def fetch_identity(provider, token):
@@ -43,6 +43,30 @@ def _stub_provider(monkeypatch, identity: Identity, access_token: str = "provide
 
     monkeypatch.setattr(oauth_service, "exchange_code", exchange_code)
     monkeypatch.setattr(oauth_service, "fetch_identity", fetch_identity)
+
+
+def _pkce(
+    provider: str = "google",
+    link_user_id: str | None = None,
+    next_path: str | None = None,
+) -> tuple[str, dict[str, str]]:
+    """A signed `state` plus the `Cookie` header its callback needs.
+
+    Both halves are required to reach the callback: the challenge travels inside
+    the signed state (as it does through the provider) and the verifier in an
+    HttpOnly cookie, which is what a browser would send back.
+    Returned explicitly instead of pushed into the client's jar: a test that runs
+    two round-trips on one client would otherwise carry a stale verifier next to
+    the fresh one, and which of them the server reads is jar order.
+    """
+    verifier = security.new_code_verifier()
+    state = security.create_oauth_state(
+        provider,
+        link_user_id,
+        next_path,
+        code_challenge=security.code_challenge(verifier),
+    )
+    return state, {security.OAUTH_PKCE_COOKIE: verifier}
 
 
 async def _authorize_url(
@@ -154,10 +178,10 @@ async def test_authorize_links_when_signed_in(monkeypatch):
 
     async with _client() as client:
         await client.post(
-            "/api/v1/auth/register", json={"email": email, "password": "password123"}
+            "/api/v1/auth/register", json={"email": email, "password": "Probe-pass-2024"}
         )
         login = await client.post(
-            "/api/v1/auth/login", data={"username": email, "password": "password123"}
+            "/api/v1/auth/login", data={"username": email, "password": "Probe-pass-2024"}
         )
         token = login.json()["access_token"]
 
@@ -177,12 +201,12 @@ async def test_callback_creates_account_and_returns_session(monkeypatch):
     _configure(monkeypatch)
     identity = Identity(provider_user_id=uuid.uuid4().hex, email=f"gh_{uuid.uuid4().hex}@example.com", login="octocat")
     _stub_provider(monkeypatch, identity, access_token="gh-token")
-    state = security.create_oauth_state("google", None, "/dashboard")
-
     async with _client() as client:
+        state, pkce = _pkce("google", next_path="/dashboard")
         response = await client.get(
             "/api/v1/auth/oauth/google/callback",
             params={"code": "auth-code", "state": state},
+            cookies=pkce,
         )
         me = await _me(client, _token_from_redirect(response))
 
@@ -209,19 +233,17 @@ async def test_callback_is_idempotent_for_the_same_identity(monkeypatch):
     _stub_provider(monkeypatch, identity)
 
     async with _client() as client:
+        first_state, first_pkce = _pkce()
+        second_state, second_pkce = _pkce()
         first = await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "code": "c1",
-                "state": security.create_oauth_state("google", None, None),
-            },
+            params={"code": "c1", "state": first_state},
+            cookies=first_pkce,
         )
         second = await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "code": "c2",
-                "state": security.create_oauth_state("google", None, None),
-            },
+            params={"code": "c2", "state": second_state},
+            cookies=second_pkce,
         )
         first_me = await _me(client, _token_from_redirect(first))
         second_me = await _me(client, _token_from_redirect(second))
@@ -237,22 +259,21 @@ async def test_callback_links_an_existing_password_account(monkeypatch):
 
     async with _client() as client:
         registered = await client.post(
-            "/api/v1/auth/register", json={"email": email, "password": "password123"}
+            "/api/v1/auth/register", json={"email": email, "password": "Probe-pass-2024"}
         )
         user_id = registered.json()["id"]
 
+        state, pkce = _pkce()
         response = await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "code": "c",
-                "state": security.create_oauth_state("google", None, None),
-            },
+            params={"code": "c", "state": state},
+            cookies=pkce,
         )
         me = await _me(client, _token_from_redirect(response))
 
         # The original password still works: the account was linked, not replaced.
         login = await client.post(
-            "/api/v1/auth/login", data={"username": email, "password": "password123"}
+            "/api/v1/auth/login", data={"username": email, "password": "Probe-pass-2024"}
         )
 
     assert me["id"] == user_id
@@ -266,12 +287,11 @@ async def test_oauth_only_account_cannot_use_password_login(monkeypatch):
     _stub_provider(monkeypatch, Identity(provider_user_id=uuid.uuid4().hex, email=email))
 
     async with _client() as client:
+        state, pkce = _pkce()
         await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "code": "c",
-                "state": security.create_oauth_state("google", None, None),
-            },
+            params={"code": "c", "state": state},
+            cookies=pkce,
         )
         login = await client.post(
             "/api/v1/auth/login", data={"username": email, "password": security.UNUSABLE_PASSWORD}
@@ -302,12 +322,11 @@ async def test_callback_rejects_a_state_for_another_provider(monkeypatch):
     _stub_provider(monkeypatch, Identity(provider_user_id="1", email="x@example.com"))
 
     async with _client() as client:
+        state, pkce = _pkce("github")
         response = await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "code": "c",
-                "state": security.create_oauth_state("github", None, None),
-            },
+            params={"code": "c", "state": state},
+            cookies=pkce,
         )
 
     assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["state"]
@@ -317,18 +336,17 @@ async def test_callback_rejects_a_state_for_another_provider(monkeypatch):
 async def test_callback_reports_a_provider_failure(monkeypatch):
     _configure(monkeypatch)
 
-    async def failing_exchange(provider, code):
+    async def failing_exchange(provider, code, code_verifier):
         raise OAuthError("nope")
 
     monkeypatch.setattr(oauth_service, "exchange_code", failing_exchange)
 
     async with _client() as client:
+        state, pkce = _pkce()
         response = await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "code": "c",
-                "state": security.create_oauth_state("google", None, None),
-            },
+            params={"code": "c", "state": state},
+            cookies=pkce,
         )
 
     assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["provider"]
@@ -342,21 +360,20 @@ async def test_callback_refuses_to_steal_a_linked_identity(monkeypatch):
 
     async with _client() as client:
         # First user owns the provider identity.
+        first_state, first_pkce = _pkce()
         await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "code": "c",
-                "state": security.create_oauth_state("google", None, None),
-            },
+            params={"code": "c", "state": first_state},
+            cookies=first_pkce,
         )
 
         # A second user asks to link the same identity.
         email = f"thief_{uuid.uuid4().hex}@example.com"
         await client.post(
-            "/api/v1/auth/register", json={"email": email, "password": "password123"}
+            "/api/v1/auth/register", json={"email": email, "password": "Probe-pass-2024"}
         )
         login = await client.post(
-            "/api/v1/auth/login", data={"username": email, "password": "password123"}
+            "/api/v1/auth/login", data={"username": email, "password": "Probe-pass-2024"}
         )
         token = login.json()["access_token"]
         url = await _authorize_url(
@@ -369,6 +386,211 @@ async def test_callback_refuses_to_steal_a_linked_identity(monkeypatch):
         )
 
     assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["link"]
+
+
+# --- PKCE (RFC 7636) ---------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_authorize_hands_the_browser_a_verifier(monkeypatch):
+    """The challenge goes to the provider; the verifier stays in a cookie here."""
+    _configure(monkeypatch)
+
+    async with _client() as client:
+        response = await client.get("/api/v1/auth/oauth/google/authorize")
+        verifier = response.cookies.get(security.OAUTH_PKCE_COOKIE)
+
+    url = response.json()["authorization_url"]
+    query = parse_qs(urlparse(url).query)
+    assert verifier is not None and 43 <= len(verifier) <= 128
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["code_challenge"] == [security.code_challenge(verifier)]
+
+
+@pytest.mark.asyncio
+async def test_callback_sends_the_verifier_to_the_token_endpoint(monkeypatch):
+    """The endpoint that exchanges the code gets the verifier the challenge came from."""
+    _configure(monkeypatch)
+    seen: dict[str, str] = {}
+
+    async def exchange_code(provider, code, code_verifier):
+        seen["verifier"] = code_verifier
+        return {"access_token": "t", "scope": provider.scope}
+
+    async def fetch_identity(provider, token):
+        return Identity(provider_user_id=uuid.uuid4().hex, email=f"pkce_{uuid.uuid4().hex}@example.com")
+
+    monkeypatch.setattr(oauth_service, "exchange_code", exchange_code)
+    monkeypatch.setattr(oauth_service, "fetch_identity", fetch_identity)
+
+    async with _client() as client:
+        url = await _authorize_url(client, "google")
+        query = parse_qs(urlparse(url).query)
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={"code": "c", "state": query["state"][0]},
+        )
+
+    assert response.status_code == 302
+    assert seen["verifier"]
+    # The verifier the token endpoint receives hashes to the challenge the
+    # provider was given: that is what makes an intercepted code useless.
+    assert security.code_challenge(seen["verifier"]) == query["code_challenge"][0]
+
+
+@pytest.mark.asyncio
+async def test_callback_requires_the_verifier_cookie(monkeypatch):
+    """A code replayed from another browser (or stolen) never becomes a session."""
+    _configure(monkeypatch)
+    _stub_provider(monkeypatch, Identity(provider_user_id="1", email="x@example.com"))
+
+    async with _client() as client:
+        state, _ = _pkce()
+
+        # The code arrives in a browser that never started the flow: no verifier.
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback", params={"code": "c", "state": state}
+        )
+
+    assert response.status_code == 302
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["pkce"]
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_a_verifier_that_does_not_match(monkeypatch):
+    _configure(monkeypatch)
+    _stub_provider(monkeypatch, Identity(provider_user_id="1", email="x@example.com"))
+
+    async with _client() as client:
+        state, _ = _pkce()
+        # A verifier this browser was never handed.
+        wrong = {security.OAUTH_PKCE_COOKIE: security.new_code_verifier()}
+
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={"code": "c", "state": state},
+            cookies=wrong,
+        )
+
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["pkce"]
+
+
+# --- connected accounts ------------------------------------------------------
+
+
+async def _password_user(client: AsyncClient) -> str:
+    """A signed-in account that also has a password; returns its bearer token."""
+    email = f"links_{uuid.uuid4().hex}@example.com"
+    await client.post("/api/v1/auth/register", json={"email": email, "password": "Probe-pass-2024"})
+    login = await client.post(
+        "/api/v1/auth/login", data={"username": email, "password": "Probe-pass-2024"}
+    )
+    return login.json()["access_token"]
+
+
+async def _link(client: AsyncClient, provider: str, token: str) -> None:
+    """Attach a provider to the signed-in account, the way the SPA does it."""
+    url = await _authorize_url(client, provider, headers={"Authorization": f"Bearer {token}"})
+    state = parse_qs(urlparse(url).query)["state"][0]
+    response = await client.get(
+        f"/api/v1/auth/oauth/{provider}/callback", params={"code": "c", "state": state}
+    )
+    _token_from_redirect(response)
+
+
+@pytest.mark.asyncio
+async def test_links_lists_a_connection_and_unlink_removes_it(monkeypatch):
+    _configure(monkeypatch)
+    identity = Identity(
+        provider_user_id=uuid.uuid4().hex, email=f"listed_{uuid.uuid4().hex}@example.com", login="octocat"
+    )
+    _stub_provider(monkeypatch, identity)
+
+    async with _client() as client:
+        token = await _password_user(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        assert (await client.get("/api/v1/auth/oauth/links", headers=headers)).json() == []
+
+        await _link(client, "google", token)
+        listed = (await client.get("/api/v1/auth/oauth/links", headers=headers)).json()
+        removed = await client.delete("/api/v1/auth/oauth/links/google", headers=headers)
+        after = (await client.get("/api/v1/auth/oauth/links", headers=headers)).json()
+
+    assert [row["provider"] for row in listed] == ["google"]
+    assert listed[0]["login"] == "octocat"
+    assert listed[0]["email"] == identity.email
+    # The provider token is what the API uses for imports; the browser never sees it.
+    assert "access_token" not in listed[0]
+    assert removed.status_code == 204
+    assert after == []
+
+
+@pytest.mark.asyncio
+async def test_unlink_refuses_to_remove_the_last_way_in(monkeypatch):
+    _configure(monkeypatch)
+    _configure(monkeypatch, "github")
+    google = Identity(provider_user_id=uuid.uuid4().hex, email=f"only_{uuid.uuid4().hex}@example.com")
+    _stub_provider(monkeypatch, google)
+
+    async with _client() as client:
+        # An account created by signing in with a provider carries no password.
+        url = await _authorize_url(client, "google")
+        state = parse_qs(urlparse(url).query)["state"][0]
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback", params={"code": "c", "state": state}
+        )
+        headers = {"Authorization": f"Bearer {_token_from_redirect(response)}"}
+
+        refused = await client.delete("/api/v1/auth/oauth/links/google", headers=headers)
+
+        # With a second identity attached, the first one can go.
+        github = Identity(provider_user_id=uuid.uuid4().hex, email=f"second_{uuid.uuid4().hex}@example.com")
+        _stub_provider(monkeypatch, github)
+        await _link(client, "github", headers["Authorization"].split(" ", 1)[1])
+        allowed = await client.delete("/api/v1/auth/oauth/links/google", headers=headers)
+
+    assert refused.status_code == 409
+    assert allowed.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_unlink_rejects_unknown_and_unlinked_providers(monkeypatch):
+    _configure(monkeypatch)
+
+    async with _client() as client:
+        token = await _password_user(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        unknown = await client.delete("/api/v1/auth/oauth/links/myspace", headers=headers)
+        unlinked = await client.delete("/api/v1/auth/oauth/links/google", headers=headers)
+        anonymous = await client.delete("/api/v1/auth/oauth/links/google")
+
+    assert unknown.status_code == 404
+    assert unlinked.status_code == 404
+    assert anonymous.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_unlink_revokes_the_provider_token(monkeypatch):
+    """Disconnecting must not leave a working credential at the provider."""
+    _configure(monkeypatch)
+    identity = Identity(provider_user_id=uuid.uuid4().hex, email=f"rev_{uuid.uuid4().hex}@example.com")
+    _stub_provider(monkeypatch, identity, access_token="gh-token")
+    revoked: list[tuple[str, str]] = []
+
+    async def revoke_token(provider, access_token):
+        revoked.append((provider.name, access_token))
+
+    monkeypatch.setattr(oauth_service, "revoke_token", revoke_token)
+
+    async with _client() as client:
+        token = await _password_user(client)
+        await _link(client, "google", token)
+        response = await client.delete(
+            "/api/v1/auth/oauth/links/google", headers={"Authorization": f"Bearer {token}"}
+        )
+
+    assert response.status_code == 204
+    assert revoked == [("google", "gh-token")]
 
 
 # --- the development-only mock provider --------------------------------------
@@ -421,12 +643,11 @@ async def test_mock_provider_rejects_a_foreign_code(monkeypatch):
     monkeypatch.setattr(settings, "DEV_OAUTH_MOCK", True)
 
     async with _client() as client:
+        mock_state, mock_pkce = _pkce("mock")
         response = await client.get(
             "/api/v1/auth/oauth/mock/callback",
-            params={
-                "code": "not-the-mock-code",
-                "state": security.create_oauth_state("mock", None, None),
-            },
+            params={"code": "not-the-mock-code", "state": mock_state},
+            cookies=mock_pkce,
         )
 
     assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["provider"]
@@ -437,12 +658,11 @@ async def test_mock_provider_cancel_is_reported(monkeypatch):
     monkeypatch.setattr(settings, "DEV_OAUTH_MOCK", True)
 
     async with _client() as client:
+        mock_state, mock_pkce = _pkce("mock")
         response = await client.get(
             "/api/v1/auth/oauth/mock/callback",
-            params={
-                "error": "access_denied",
-                "state": security.create_oauth_state("mock", None, None),
-            },
+            params={"error": "access_denied", "state": mock_state},
+            cookies=mock_pkce,
         )
 
     assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["denied"]
@@ -454,12 +674,11 @@ async def test_real_provider_cancel_is_reported_too(monkeypatch):
     _configure(monkeypatch)
 
     async with _client() as client:
+        state, pkce = _pkce()
         response = await client.get(
             "/api/v1/auth/oauth/google/callback",
-            params={
-                "error": "access_denied",
-                "state": security.create_oauth_state("google", None, None),
-            },
+            params={"error": "access_denied", "state": state},
+            cookies=pkce,
         )
 
     assert response.status_code == 302
@@ -472,10 +691,10 @@ async def test_real_provider_cancel_is_reported_too(monkeypatch):
 async def _register(client: AsyncClient) -> tuple[dict, dict]:
     email = f"gh_user_{uuid.uuid4().hex}@example.com"
     registered = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "password123"}
+        "/api/v1/auth/register", json={"email": email, "password": "Probe-pass-2024"}
     )
     login = await client.post(
-        "/api/v1/auth/login", data={"username": email, "password": "password123"}
+        "/api/v1/auth/login", data={"username": email, "password": "Probe-pass-2024"}
     )
     return registered.json(), {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -632,4 +851,4 @@ async def test_import_maps_a_missing_repository_to_404(monkeypatch):
 def test_unusable_password_never_verifies():
     assert security.verify_password("", security.UNUSABLE_PASSWORD) is False
     assert security.verify_password(security.UNUSABLE_PASSWORD, security.UNUSABLE_PASSWORD) is False
-    assert security.verify_password("password123", "") is False
+    assert security.verify_password("Probe-pass-2024", "") is False

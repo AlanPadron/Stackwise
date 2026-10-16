@@ -10,6 +10,7 @@ import {
     streamAgentMessage,
 } from '../api/agent';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { usePacedText } from '../hooks/usePacedText';
 import { useI18n } from '../i18n/I18nContext';
 import { Robot, RobotState } from './Robot';
 import { Button, Loader, RobotIcon } from './ui';
@@ -43,6 +44,22 @@ const SUCCESS_MS = 1400;
 const CALM_MS = 6000;
 
 /**
+ * After this long without any interaction while the user reads, the robot falls
+ * asleep and says so with drifting "z"s — and any sign of life wakes it.
+ */
+const SLEEP_MS = 60_000;
+
+/** How long the wake-up pose is held before the resting one takes over. */
+const WAKE_MS = 520;
+
+/**
+ * Interactions closer together than this do not reschedule anything. A pointer
+ * move fires dozens of times a second and only the first one after a quiet
+ * second has anything to act on.
+ */
+const ACTIVITY_MS = 1000;
+
+/**
  * The chat that explains the findings of the analysis in scope. Mounted only for
  * a signed-in user (see `App.tsx`).
  *
@@ -52,8 +69,9 @@ const CALM_MS = 6000;
  *
  * The answer is streamed, so the robot's states come from what the server is
  * really doing: a delta arriving is what turns "thinking" into "typing", and
- * stopping the request is what returns it to rest. Nothing here animates on a
- * timer of its own.
+ * stopping the request is what returns it to rest. The one clock of its own is
+ * the nap — after a minute of nothing while the panel is open, it falls asleep,
+ * and any interaction wakes it with a pose rather than a jolt.
  */
 export const AgentChat: React.FC = () => {
     const { t } = useI18n();
@@ -64,8 +82,12 @@ export const AgentChat: React.FC = () => {
     const [turns, setTurns] = useState<Turn[]>([]);
     const [draft, setDraft] = useState('');
     const [phase, setPhase] = useState<Phase>('idle');
-    const [streamed, setStreamed] = useState('');
-    const [mood, setMood] = useState<'sent' | 'success' | 'error' | null>(null);
+    const [mood, setMood] = useState<'sent' | 'success' | 'error' | 'wake' | null>(null);
+    const [sleeping, setSleeping] = useState(false);
+    // Bumped by every interaction while the panel is open: it is what reschedules
+    // the nap below, so the timer itself never has to be juggled by hand.
+    const [activity, setActivity] = useState(0);
+    const reveal = usePacedText();
     const [calm, setCalm] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
     const panel = useRef<HTMLDivElement | null>(null);
@@ -73,6 +95,9 @@ export const AgentChat: React.FC = () => {
     const abort = useRef<AbortController | null>(null);
     const timers = useRef<number[]>([]);
     const calmTimer = useRef<number | null>(null);
+    // Read by callbacks that outlive a render (the activity throttle, the wake).
+    const sleepingRef = useRef(false);
+    const lastActivity = useRef(0);
     // The agent speaks up about a broken runtime once per session, not on every
     // open/close of the panel.
     const greeted = useRef(false);
@@ -144,11 +169,47 @@ export const AgentChat: React.FC = () => {
 
     useEffect(() => {
         listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-    }, [turns, streamed, phase]);
+    }, [turns, reveal.text, phase]);
+
+    /**
+     * Any sign of life: the robot pays attention, and if it had nodded off it
+     * comes back up instead of simply opening its eyes mid-sentence.
+     */
+    const noteActivity = useCallback(
+        (force = false) => {
+            const now = Date.now();
+            if (!force && now - lastActivity.current < ACTIVITY_MS) return;
+            lastActivity.current = now;
+            if (sleepingRef.current) {
+                sleepingRef.current = false;
+                setSleeping(false);
+                setMood('wake');
+                later(() => setMood((current) => (current === 'wake' ? null : current)), WAKE_MS);
+            }
+            setActivity(now);
+        },
+        [later]
+    );
+
+    /**
+     * The nap. Armed only while the panel is open and the agent is not working —
+     * a closed panel has nothing to animate, and a run in flight is not idle — and
+     * re-armed from scratch by every interaction, because the effect's cleanup is
+     * the cancellation.
+     */
+    useEffect(() => {
+        if (!open || busy || sleeping) return;
+        const timer = window.setTimeout(() => {
+            sleepingRef.current = true;
+            setSleeping(true);
+        }, SLEEP_MS);
+        return () => window.clearTimeout(timer);
+    }, [open, busy, sleeping, activity]);
 
     /** Any sign of life from the user: the robot pays attention again. */
     const noteInput = () => {
         setCalm(false);
+        noteActivity();
         setMood((current) => (current === 'error' ? null : current));
         // One timer, replaced: keystrokes must not stack up and let an old one
         // relax the robot while the user is still typing.
@@ -163,7 +224,7 @@ export const AgentChat: React.FC = () => {
         const history: Turn[] = [...turns, { role: 'user', content }];
         setTurns(history);
         setDraft('');
-        setStreamed('');
+        reveal.reset();
         setMood('sent');
         setPhase('pending');
         later(() => setMood((current) => (current === 'sent' ? null : current)), SENT_MS);
@@ -186,15 +247,24 @@ export const AgentChat: React.FC = () => {
                 },
                 onDelta: (text) => {
                     accumulated += text;
-                    setStreamed(accumulated);
+                    reveal.push(text);
                     setPhase('streaming');
                 },
             }
         );
 
         abort.current = null;
+
+        // A finished answer is waited for: the turn is committed once the text has
+        // been written to the screen, so the bubble never jumps from a half-written
+        // paragraph to the whole one. A cut or failed stream is not waited for —
+        // what the user watched appear is what stays in the transcript.
+        if (outcome.kind === 'done') {
+            await reveal.flush();
+        }
+        const written = reveal.shown();
+        reveal.reset();
         setPhase('idle');
-        setStreamed('');
 
         /** How the answer was produced, in the transcript's footnote form. */
         const footnote = (reply: AgentStreamMeta | null): string =>
@@ -218,11 +288,10 @@ export const AgentChat: React.FC = () => {
         if (outcome.kind === 'cancelled') {
             // Nothing failed, so nothing looks wrong: the partial answer stays
             // where it got to and the robot goes back to resting.
-            const partial = outcome.partial || accumulated;
             setTurns([
                 ...history,
-                partial
-                    ? { role: 'assistant', content: partial, meta: t('agent.cancelled') }
+                written
+                    ? { role: 'assistant', content: written, meta: t('agent.cancelled') }
                     : { role: 'assistant', content: t('agent.cancelled') },
             ]);
             return;
@@ -232,8 +301,8 @@ export const AgentChat: React.FC = () => {
         // chat answers in the agent's voice instead.
         setTurns([
             ...history,
-            accumulated
-                ? { role: 'assistant', content: accumulated, meta: t('agent.error') }
+            written
+                ? { role: 'assistant', content: written, meta: t('agent.error') }
                 : { role: 'assistant', content: t('agent.error') },
         ]);
         setMood('error');
@@ -259,9 +328,20 @@ export const AgentChat: React.FC = () => {
                   ? 'user-sent'
                   : phase !== 'idle'
                     ? 'thinking'
-                    : draft.trim() !== '' || !calm
-                      ? 'attentive'
-                      : 'idle';
+                    : mood === 'wake'
+                      ? 'wake'
+                      : sleeping
+                        ? 'sleeping'
+                        : draft.trim() !== '' || !calm
+                          ? 'attentive'
+                          : 'idle';
+
+    /** Opening is the one gesture that always counts, however long it has been. */
+    const toggleOpen = () => {
+        const next = !open;
+        setOpen(next);
+        if (next) noteActivity(true);
+    };
 
     return (
         <div
@@ -279,6 +359,10 @@ export const AgentChat: React.FC = () => {
                     aria-modal="true"
                     aria-label={t('agent.title')}
                     tabIndex={-1}
+                    // Reading is interaction: the pointer being over the panel, or
+                    // the transcript being scrolled, is what keeps the robot awake.
+                    onPointerDown={() => noteActivity()}
+                    onPointerMove={() => noteActivity()}
                     className="sw-popover sw-enter-pop flex w-[min(26rem,calc(100vw-3rem))] flex-col"
                 >
                     <header className="flex items-start gap-3 border-b border-[var(--sw-hairline)] px-4 py-3">
@@ -314,6 +398,7 @@ export const AgentChat: React.FC = () => {
 
                     <div
                         ref={listRef}
+                        onScroll={() => noteActivity()}
                         className="sw-scroll flex max-h-[min(22rem,55dvh)] min-h-[min(9rem,25dvh)] flex-col gap-3 overflow-y-auto px-4 py-3"
                     >
                         {turns.length === 0 && <p className="sw-hint">{t('agent.empty')}</p>}
@@ -349,13 +434,13 @@ export const AgentChat: React.FC = () => {
                             </div>
                         ))}
 
-                        {streamed !== '' && (
+                        {reveal.text !== '' && (
                             <div className="flex flex-col items-start">
                                 <span className="text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-[0.625rem]">
                                     {t('agent.name')}
                                 </span>
                                 <p className="mt-1 max-w-[90%] whitespace-pre-wrap rounded-sw bg-[var(--sw-sunken)] px-3 py-2 text-sm text-ink">
-                                    {streamed}
+                                    {reveal.text}
                                 </p>
                                 <span
                                     className="mt-1 text-xs text-faint sm:text-[0.6875rem]"
@@ -366,7 +451,7 @@ export const AgentChat: React.FC = () => {
                             </div>
                         )}
 
-                        {busy && streamed === '' && (
+                        {busy && reveal.text === '' && (
                             <div className="py-2">
                                 <Loader caption={t('agent.thinking')} />
                             </div>
@@ -413,7 +498,7 @@ export const AgentChat: React.FC = () => {
 
             <button
                 type="button"
-                onClick={() => setOpen((value) => !value)}
+                onClick={toggleOpen}
                 className="sw-fab sw-fab--accent"
                 aria-expanded={open}
                 aria-haspopup="dialog"

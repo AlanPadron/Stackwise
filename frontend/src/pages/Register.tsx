@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import apiClient, { getApiErrorMessage } from '../api/client';
+import { isPasswordAcceptable } from '../config';
 import { useAuth } from '../context/AuthContext';
 import { useSplash } from '../context/SplashContext';
 import { useI18n } from '../i18n/I18nContext';
@@ -25,6 +26,14 @@ const Register: React.FC = () => {
 
         if (password !== confirmPassword) {
             setError(t('auth.passwordsDoNotMatch'));
+            return;
+        }
+
+        // The server refuses this too (422 with its own reason); checking here
+        // only saves the round-trip. The blocklist of common passwords is the
+        // server's alone, so a password that passes this can still be refused.
+        if (!isPasswordAcceptable(password)) {
+            setError(t('auth.passwordTooWeak'));
             return;
         }
 

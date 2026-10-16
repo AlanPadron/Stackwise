@@ -9,14 +9,14 @@ narrow these values, never widen them. Keep that rule when adding a setting.
 """
 
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Literal
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Stackwise"
     API_V1_STR: str = "/api/v1"
     # Release tag: keep in sync with `frontend/package.json` and
     # `frontend/src/config.ts` (the version badge).
-    APP_VERSION: str = "1.7.0-alpha"
+    APP_VERSION: str = "1.8.0-alpha"
 
     # Deployment database. Present for docker-compose/Vercel parity; the async
     # engine below connects through `SQLALCHEMY_URL` (see app/db/session.py).
@@ -24,10 +24,25 @@ class Settings(BaseSettings):
     SQLALCHEMY_URL: str = "sqlite+aiosqlite:///./stackwise.db"
     # Log every SQL statement (development only).
     SQLALCHEMY_ECHO: bool = False
+    # How the engine talks to a hosted connection pooler. `auto` decides from the
+    # URL (a transaction pooler on :6543 — Supabase's `…pooler.supabase.com:6543`
+    # — cannot keep server-side prepared statements, so both caches are disabled
+    # and no connection is pooled); `direct` and `transaction` force the answer
+    # for a pooler that listens elsewhere. Ignored for non-PostgreSQL URLs.
+    SQLALCHEMY_POOL_MODE: Literal["auto", "direct", "transaction"] = "auto"
 
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     CORS_ORIGINS: List[str] = ["*"]
+
+    # --- accounts: sign-in hardening -----------------------------------------
+    # Attempts accepted per minute and per client address. Registration bounds
+    # account creation from one place; login bounds credential stuffing against
+    # many accounts from one address and brute force against one account from
+    # many. Process-local, like every other limit here: a multi-worker
+    # deployment wants the same ceiling at the edge as well.
+    AUTH_REGISTER_RATE_LIMIT_PER_MINUTE: int = 5
+    AUTH_LOGIN_RATE_LIMIT_PER_MINUTE: int = 10
 
     # --- public origins ------------------------------------------------------
     # The API's own origin (builds OAuth redirect URIs) and the SPA's (the browser
@@ -49,7 +64,7 @@ class Settings(BaseSettings):
 
     # --- development-only mock provider -------------------------------------
     # Registers `/auth/oauth/mock`, a local stand-in for a provider: a consent
-    # screen served by this API that signs in as a fixed `*.local` identity
+    # screen served by this API that signs in as a fixed `example.com` identity
     # without contacting anyone. Lets the whole flow be exercised without
     # registering OAuth apps. NEVER enable this on a reachable deployment.
     DEV_OAUTH_MOCK: bool = False

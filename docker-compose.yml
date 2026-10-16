@@ -1,11 +1,15 @@
 version: '3.8'
 
+# Secrets come from the environment (or a local .env, which is git-ignored).
+# Compose refuses to start when a required value is missing, so no deployment
+# silently runs with a development password or key.
+
 services:
   db:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: stackwise
     ports:
       - "5432:5432"
@@ -20,9 +24,9 @@ services:
       # DATABASE_URL is the deployment's sync URL. The backend connects with
       # SQLALCHEMY_URL; point it at the "db" service (and add asyncpg to the image)
       # to run on Postgres instead of the container's SQLite file:
-      #   SQLALCHEMY_URL=postgresql+asyncpg://postgres:postgres@db:5432/stackwise
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/stackwise
-      - SECRET_KEY=development_secret_key_12345
+      #   SQLALCHEMY_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/stackwise
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/stackwise
+      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY in .env}
       - ACCESS_TOKEN_EXPIRE_MINUTES=60
       - CORS_ORIGINS=["*"]
     depends_on:

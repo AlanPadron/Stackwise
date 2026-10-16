@@ -3,14 +3,37 @@
 .env.*
 !.env.example
 
+# --- secrets and keys ------------------------------------------------------
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.secret
+secrets/
+
 # --- python ----------------------------------------------------------------
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 *.egg-info/
+venv/
+.venv/
 
-# --- local data ------------------------------------------------------------
+# --- local data (databases, uploads, analysis workspaces) ------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
 stackwise.db
+data/
+workspaces/
 
 # --- logs ------------------------------------------------------------------
 *.log
@@ -18,6 +41,7 @@ stackwise.db
 # --- node / frontend build output -----------------------------------------
 node_modules/
 dist/
+*.tsbuildinfo
 
 # --- editor / assistant caches --------------------------------------------
 .aider*
