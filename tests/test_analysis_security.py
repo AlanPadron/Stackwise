@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from api_helpers import import_and_wait
 from engine_builders import demo_python_sources
 from sqlalchemy import select
 
@@ -31,27 +32,17 @@ SECRET_SOURCE = {
 }
 
 
-def _zip_bytes(files: dict[str, str]) -> bytes:
-    import io
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        for name, content in files.items():
-            archive.writestr(name, content)
-    return buffer.getvalue()
-
-
 async def _start_run(db_project, *, analysis_config=None) -> uuid.UUID:
     async with AsyncSessionLocal() as session:
         run = await AnalysisPersistenceService(session).create_run(
-            db_project, source_type="zip", analysis_config=analysis_config
+            db_project, source_type="github", analysis_config=analysis_config
         )
         return run.id
 
 
 async def _execute(run_id, archive: Path, **kwargs) -> None:
     await AnalysisOrchestrator(**kwargs).execute(
-        run_id, PendingSource(path=Path(archive), source_type="zip", origin="demo.zip")
+        run_id, PendingSource(path=Path(archive), source_type="github", origin="octocat/demo@main")
     )
 
 
@@ -69,66 +60,9 @@ async def _load(run_id):
 
 
 # --- untrusted archives ------------------------------------------------------
-
-
-async def test_malicious_archives_are_refused_by_the_api(client, auth_headers, project, temp_root):
-    outside = temp_root / "outside.py"
-    cases = {
-        "traversal": {"../outside.py": "x = 1\n"},
-        "nested-traversal": {"a/../../outside.py": "x = 1\n"},
-        "absolute": {"/tmp/outside.py": "x = 1\n"},
-        "windows": {"C:\\windows\\outside.py": "x = 1\n"},
-    }
-    for label, files in cases.items():
-        response = await client.post(
-            f"/api/v1/projects/{project['id']}/analyses",
-            headers=auth_headers,
-            files={"file": (f"{label}.zip", _zip_bytes(files), "application/zip")},
-        )
-        assert response.status_code == 400, label
-
-    assert not outside.exists()
-
-
-async def test_symlink_and_special_entries_are_refused(client, auth_headers, project):
-    import io
-
-    for label, mode in (("symlink", stat.S_IFLNK | 0o777), ("fifo", stat.S_IFIFO | 0o644)):
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            info = zipfile.ZipInfo("payload")
-            info.external_attr = mode << 16
-            archive.writestr(info, "/etc/passwd")
-            archive.writestr("ok.py", "x = 1\n")
-
-        response = await client.post(
-            f"/api/v1/projects/{project['id']}/analyses",
-            headers=auth_headers,
-            files={"file": (f"{label}.zip", buffer.getvalue(), "application/zip")},
-        )
-        assert response.status_code == 400, label
-
-
-async def test_archive_bomb_and_depth_limits_are_enforced(client, auth_headers, project):
-    import io
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("payload.py", "#" * (settings.ANALYSIS_MAX_FILE_SIZE_KB * 512))
-    compressed_bomb = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("bomb.zip", buffer.getvalue(), "application/zip")},
-    )
-    assert compressed_bomb.status_code == 400
-
-    deep_name = "/".join(f"n{index}" for index in range(settings.ANALYSIS_MAX_WORKSPACE_DEPTH + 3)) + "/app.py"
-    deep = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("deep.zip", _zip_bytes({deep_name: "x = 1\n"}), "application/zip")},
-    )
-    assert deep.status_code == 400
+#
+# The archive rejections (traversal, absolute paths, symlinks/FIFOs, bombs,
+# depth) are covered where the validation lives: `tests/test_analysis_archive.py`.
 
 
 async def test_archive_with_shell_metacharacters_in_a_filename_is_handled_literally(db_project, temp_root, make_zip):
@@ -248,26 +182,13 @@ async def test_analyzer_working_directory_and_environment_are_isolated(db_projec
 
 
 async def test_source_secrets_never_reach_findings_or_api_responses(
-    client, auth_headers, project, make_zip
+    client, auth_headers, repo_import
 ):
-    archive = make_zip(SECRET_SOURCE)
-    response = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("secrets.zip", archive.read_bytes(), "application/zip")},
-    )
-    assert response.status_code == 202
-    run_id = response.json()["id"]
+    repo_import(SECRET_SOURCE)
+    _, run = await import_and_wait(client, auth_headers)
+    run_id = run["id"]
 
-    payloads = []
-    for _ in range(10):
-        run = (await client.get(f"/api/v1/analyses/{run_id}", headers=auth_headers)).json()
-        if run["status"] not in ("pending", "running", "processing"):
-            break
-        import asyncio
-
-        await asyncio.sleep(0.05)
-    payloads.append(json.dumps(run))
+    payloads = [json.dumps(run)]
     findings = (
         await client.get(f"/api/v1/analyses/{run_id}/findings", headers=auth_headers)
     ).json()

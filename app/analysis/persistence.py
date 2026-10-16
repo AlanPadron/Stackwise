@@ -39,7 +39,7 @@ class AnalysisPersistenceService:
         self,
         project_id: uuid.UUID,
         *,
-        source_type: str = "zip",
+        source_type: str = "github",
         source_ref: Optional[str] = None,
         engine_version: Optional[str] = None,
         config_version: Optional[str] = None,

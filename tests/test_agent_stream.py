@@ -147,9 +147,9 @@ async def test_the_stream_reports_meta_then_fragments_then_the_whole_answer(
 
 
 async def test_the_stream_quotes_the_findings_of_the_latest_finished_run(
-    client, auth_headers, project, streaming_backend
+    client, auth_headers, repo_import, streaming_backend
 ):
-    run = await _completed_run(client, auth_headers, project["id"])
+    project, run = await _completed_run(client, auth_headers)
     assert run["summary"]["total_findings"] > 0, "the demo sources must produce findings"
     backend = streaming_backend()
 

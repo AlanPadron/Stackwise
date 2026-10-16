@@ -28,8 +28,8 @@ async def _start_run(db_project, *, analysis_config=None) -> uuid.UUID:
     async with AsyncSessionLocal() as session:
         run = await AnalysisPersistenceService(session).create_run(
             db_project,
-            source_type="zip",
-            source_ref="demo.zip",
+            source_type="github",
+            source_ref="github.com/octocat/demo",
             engine_version="test",
             analysis_config=analysis_config,
         )
@@ -39,7 +39,7 @@ async def _start_run(db_project, *, analysis_config=None) -> uuid.UUID:
 async def _execute(run_id: uuid.UUID, archive: Path) -> None:
     orchestrator = AnalysisOrchestrator()
     await orchestrator.execute(
-        run_id, PendingSource(path=Path(archive), source_type="zip", origin="demo.zip")
+        run_id, PendingSource(path=Path(archive), source_type="github", origin="octocat/demo@main")
     )
 
 
@@ -259,7 +259,7 @@ async def test_database_unavailable_at_startup_leaves_the_run_recoverable(db_pro
 
     run_id = await _start_run(db_project)
     orchestrator = AnalysisOrchestrator(session_factory=broken_session_factory)
-    await orchestrator.execute(run_id, PendingSource(path=demo_archive, source_type="zip"))
+    await orchestrator.execute(run_id, PendingSource(path=demo_archive, source_type="github"))
 
     run, _ = await _load(run_id)
     assert run.status == "pending"  # still recoverable by the stale-run reaper

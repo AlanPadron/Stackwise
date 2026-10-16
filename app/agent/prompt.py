@@ -9,8 +9,8 @@ Two properties hold by construction:
   0.5B model has to spend most of its window on the answer, so the digest stops at
   a configured number of lines and characters and says when it did;
 * the findings are **quoted data**, never instructions. Their text comes from
-  analyzer output over a repository the user uploaded, so the system prompt tells
-  the model to treat anything inside the findings block as material to explain.
+  analyzer output over an imported repository, so the system prompt tells the
+  model to treat anything inside the findings block as material to explain.
 """
 
 from dataclasses import dataclass

@@ -87,7 +87,7 @@ class PendingSource:
     """A source archive waiting to be acquired, owned by the caller."""
 
     path: Path
-    source_type: str = "zip"
+    source_type: str = "github"
     origin: Optional[str] = None
 
 

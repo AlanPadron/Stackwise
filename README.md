@@ -8,7 +8,7 @@
 ![pwa](https://img.shields.io/badge/PWA-installable-17795a)
 
 **Code quality, security and complexity analysis that reads like a report instead of a log.**
-Upload a source archive — or import a repository straight from GitHub — and Stackwise turns raw
+Import a repository straight from GitHub, and Stackwise turns raw
 analyzer output into a browsable report, then hands it to **NIom**, an agent that explains what the
 findings mean.
 
@@ -124,9 +124,9 @@ npm install
 npm run dev                              # http://localhost:3000, /api proxied to :8001
 ```
 
-Open `http://localhost:3000`, register, and upload a ZIP of a Python project. The Vite dev server
-serves the SPA from port 3000 and forwards `/api` to 8001, so nothing has to be configured to run the
-two together. If the API lives elsewhere, set `VITE_API_URL` when building.
+Open `http://localhost:3000`, register, connect a GitHub account and import a repository to analyse.
+The Vite dev server serves the SPA from port 3000 and forwards `/api` to 8001, so nothing has to be
+configured to run the two together. If the API lives elsewhere, set `VITE_API_URL` when building.
 
 ### 3. Configuration
 
@@ -145,7 +145,7 @@ run the findings agent. The full list, with what each variable does, is in
 ### 4. Tests and a production build
 
 ```bash
-pytest                                   # 260 tests, ~50s
+pytest                                   # 271 tests, ~75s
 npm run build --prefix frontend          # tsc + vite build → frontend/dist
 npm run preview --prefix frontend        # serves that build (also the PWA) on :4173
 ```
@@ -334,8 +334,8 @@ Accessibility: the figure is `aria-hidden` and never focusable — what the agen
 words by the chat's own status line (`role="status"`), which is the accessible source of truth, so a
 screen reader is never announced a moving face. Under `prefers-reduced-motion` every animation
 collapses to nothing and the states remain readable as static poses (dots out, laptop out, eyes
-narrowed, smile drawn). A background tab pauses the animation, and the eye button in the header turns
-the robot off (remembered per browser) for anyone who wants a tighter interface.
+narrowed, smile drawn). A background tab pauses the animation. The robot is always drawn in the chat
+header — it is the status of the answer, not decoration you can turn off.
 
 ---
 
@@ -343,7 +343,7 @@ the robot off (remembered per browser) for anyone who wants a tighter interface.
 
 ```mermaid
 flowchart LR
-  U[Upload ZIP /<br/>import from GitHub] --> P["202 · run = pending"]
+  U[Import from GitHub] --> P["201 · run = pending"]
   P --> X["Safe extract<br/>limits + exclusions"]
   X --> I[Inventory<br/>languages, files]
   I --> A["ruff · bandit · radon<br/>isolated subprocesses"]
@@ -354,11 +354,10 @@ flowchart LR
   D --> S[SPA report + NIom]
 ```
 
-1. A user signs up (email/password, Google or GitHub), creates a project and uploads a ZIP — or
-   imports a repository straight from GitHub.
-2. `POST /projects/{id}/analyses` spools the archive to a temp file, writes a `pending` run and
-   returns `202` immediately. `POST /projects/from-repo` does the same after downloading the
-   repository's zipball, so both sources share one pipeline.
+1. A user signs up (email/password, Google or GitHub) and imports a GitHub repository; that import
+   creates the project and starts its first run.
+2. `POST /projects/from-repo` downloads the repository's zipball with the caller's own GitHub token,
+   spools it to a temp file, writes a `pending` run and returns `201` immediately.
 3. The engine runs as a background task: extract safely → inventory → run the analyzers under
    explicit limits → normalise and deduplicate findings → compute metrics → compute heuristic risk →
    persist everything in one transaction → mark the run `completed` (or `completed_with_errors` when
@@ -455,9 +454,9 @@ Base path `/api/v1`, JSON, bearer tokens. `GET /health` lives outside it. The co
 |---|---|
 | Accounts | `POST /auth/register`, `POST /auth/login` (form data), `GET /auth/me` |
 | Providers | `GET /auth/providers`, `GET /auth/oauth/{provider}/authorize`, `GET /auth/oauth/{provider}/callback` |
-| Repositories | `GET /github/repositories`, `POST /projects/from-repo` |
-| Projects | `GET/POST /projects`, `GET/PATCH/DELETE /projects/{id}` |
-| Analyses | `POST /projects/{id}/analyses` (multipart, `202`), `GET /projects/{id}/analyses` (history, `X-Total-Count`), `GET /analyses/{id}`, `GET /analyses/{id}/findings`, `GET /findings/{id}` |
+| Repositories | `GET /github/repositories`, `POST /projects/from-repo` (creates the project and its first run) |
+| Projects | `GET /projects`, `GET/PATCH/DELETE /projects/{id}` |
+| Analyses | `GET /projects/{id}/analyses` (history, `X-Total-Count`), `GET /analyses/{id}`, `GET /analyses/{id}/findings`, `GET /findings/{id}` |
 | NIom | `GET /agent/status`, `POST /agent/chat` (whole answer), `POST /agent/chat/stream` (server-sent events) |
 | Overview | `GET /dashboard/summary`, `GET /api/v1/health`, `GET /health` |
 
@@ -541,6 +540,20 @@ The responsive layer is deliberately thin and lives in the same file as the toke
 switches to a drawer (`AppShell`), utility classes at the call site, and one breakpoint's worth of
 rules for the things a utility cannot express — the size a control needs under a finger, and the
 insets a notched screen reports.
+
+Motion is part of the token layer, not a per-component decision, and each animation picks one of four
+curves: `--sw-ease-out` for anything that arrives, `--sw-ease-inout` for anything that loops (an
+infinite animation on an ease-out curve snaps at the peak of every cycle and then crawls),
+`--sw-ease-spring` for the toggle — the one control with weight — and `--sw-ease` for everything in
+between. Durations are four steps (`--sw-t-fast`, `--sw-t-hover`, `--sw-t-enter`, `--sw-t`) and the
+Tailwind utilities read those same custom properties rather than restating them as numbers.
+
+Two conventions follow from that. Anything drawn *around* a control — the focus ring, the invalid-field
+ring — has its own token (`--sw-focus-ring`, `--sw-danger-ring`) at the strength a 3px ring needs to
+be seen against the canvas, because a ring sits next to the page rather than on the control. And a
+theme swap is one motion: `ThemeContext` puts `sw-theming` on `<html>` for the length of the swap, so
+every surface crossfades at the same rate instead of the class-set colours snapping while inherited
+ones interpolated. Under `prefers-reduced-motion` the swap rule drops out with everything else.
 
 Retheming is a token edit rather than a JSX sweep, and both languages are typed: the English
 dictionary defines the key union and the Spanish one is a complete translation of it, so a missing
@@ -660,7 +673,7 @@ reachable on a deployed host; when it is switched on, the API logs a warning at 
 ### 5. After deploying
 
 1. `GET /health` → `{"status": "healthy"}` and `GET /api/v1/health` → `"database": "ok"`.
-2. Register an account; upload a small ZIP; watch it reach `completed`.
+2. Register an account; connect GitHub and import a small repository; watch the run reach `completed`.
 3. `GET /api/v1/agent/status` → `available: true` if a runtime is configured (and if not, the reason).
 4. Install the PWA from the deployed HTTPS URL (see [Install it as an app](#install-it-as-an-app-pwa)).
 
@@ -682,8 +695,8 @@ What the code does, and what a deployment still has to get right:
   variable (`VITE_API_URL`), no `VITE_*` secret exists, and the OAuth session token comes back in the
   URL **fragment** (`#token=…`), which no server sees. Anything secret-shaped is redacted before it
   is stored, returned or logged.
-- **Untrusted archives and untrusted code.** Uploads are validated before extraction (traversal,
-  symlinks, special files, bomb ratios, count/size/depth limits), and repository code is never
+- **Untrusted archives and untrusted code.** Imported archives are validated before extraction
+  (traversal, symlinks, special files, bomb ratios, count/size/depth limits), and repository code is never
   executed — analyzers are invoked as subprocesses with a scrubbed environment, a neutral working
   directory, rlimits and a process-group timeout. This is **not a sandbox**: the isolation boundary is
   the operating system's, not Stackwise's, and analyzer processes have no network restriction.
@@ -701,16 +714,16 @@ What the code does, and what a deployment still has to get right:
 - Email/password accounts (bcrypt + HS256 JWTs) and optional Google/GitHub sign-in with account
   linking; repository import from GitHub.
 - Projects scoped to their owner; cross-account access is `403`.
-- ZIP upload or GitHub import → asynchronous run with `pending → running → completed |
+- GitHub import → asynchronous run with `pending → running → completed |
   completed_with_errors | failed` (legacy `processing` rows read as `running`).
 - Static analysis with ruff, bandit and radon behind a registry, with a documented severity policy,
   canonical findings, fingerprints, deduplication and redacted metadata.
 - Per-run metrics and versioned heuristic risk indicators; per-run summary and a user-level dashboard.
 - Per-project and per-run analysis configuration (exclusions, enabled analyzers, ruff rule subset,
   thresholds, caps, timeouts), validated against the platform ceiling.
-- SPA: sign-in, dashboard, projects, project detail with upload, history and findings, protected
-  routes, light/dark themes, EN/ES, session splash, session-only NIom with its chat panel, and the
-  release badge.
+- SPA: sign-in, dashboard, projects, GitHub repository import, project detail with run history and
+  findings, protected routes, light/dark themes, EN/ES, session splash, session-only NIom with its chat
+  panel, and the release badge.
 - **Installable PWA**: manifest, icon set, generated service worker that pre-caches the shell and
   refuses to cache `/api/`, iOS/iPadOS meta tags, an offline banner and an update that waits for the
   user. Install instructions for Android and iOS above.
@@ -768,6 +781,11 @@ application version moving; it is recorded on every run.
 - **Security**: the agent's error reasons are now scrubbed of the app's own secrets *by value* as well
   as by shape (`redact_with_values`), because a Cloudflare API token is forty unremarkable characters
   that no pattern can recognise. A test that streams a failure through the endpoint is what found it.
+- **One way in.** The local ZIP upload is gone end to end: `POST /projects` and
+  `POST /projects/{id}/analyses` no longer exist, the "New Project" page and the upload form were
+  removed from the SPA, and a project is now created only by importing a GitHub repository
+  (`POST /projects/from-repo`), whose snapshot is downloaded with the caller's own token and analysed
+  in the background.
 
 ### 1.5.0-alpha
 
@@ -784,8 +802,8 @@ application version moving; it is recorded on every run.
   reach a 44px touch target and fields 16px on small screens, and wide tables scroll inside their card
   instead of overflowing the page. One shared `useFocusTrap` now covers all three dialogs.
 - **Accessibility**: a skip link, `scope`/`caption` on the project table, a `role="alert"` for the
-  async error on the OAuth callback, a ZIP picker that is reachable by keyboard (it was a `display:none`
-  input behind a styled label), and `autocomplete`/`inputmode` hints that make mobile autofill work.
+  async error on the OAuth callback, and `autocomplete`/`inputmode` hints that make mobile autofill
+  work.
 - **Cloudflare Workers AI** as a second agent runtime (`app/agent/cloudflare.py`,
   `AGENT_BACKEND=cloudflare`, `CLOUDFLARE_*` settings), with the reference model
   `@cf/qwen/qwen2.5-coder-32b-instruct`: no local install, the token stays a backend secret and is
@@ -844,7 +862,7 @@ application version moving; it is recorded on every run.
   radii, finite animations, ornamental brand W, EN/ES switch, and one floating settings drawer.
 - **My Projects** screen; one shared `AppSidebar`; client-side navigation everywhere; a catch-all
   route so an unmatched URL never renders an empty page.
-- Authorisation consolidated in `app/api/deps.py`; uploaded archives deleted after a run.
+- Authorisation consolidated in `app/api/deps.py`; imported archives deleted after a run.
 
 ---
 

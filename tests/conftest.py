@@ -39,6 +39,7 @@ from app.analysis.orchestrator import reset_concurrency_limit  # noqa: E402
 from app.core.ratelimit import reset_agent_chat_limiter, reset_analysis_start_limiter  # noqa: E402
 from app.db.session import engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services import github as github_service  # noqa: E402
 from engine_builders import demo_python_sources  # noqa: E402,F401
 
 
@@ -108,8 +109,8 @@ async def client() -> AsyncClient:
 
 
 @pytest_asyncio.fixture
-async def auth_headers(client: AsyncClient) -> dict[str, str]:
-    """A freshly registered user's bearer headers."""
+async def auth_user(client: AsyncClient) -> dict:
+    """A freshly registered user: its id, its email and its bearer headers."""
     email = f"user_{uuid.uuid4().hex}@example.com"
     response = await client.post(
         "/api/v1/auth/register", json={"email": email, "password": "password123"}
@@ -119,16 +120,88 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
         "/api/v1/auth/login", data={"username": email, "password": "password123"}
     )
     assert login.status_code == 200, login.text
-    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+    return {
+        "id": uuid.UUID(response.json()["id"]),
+        "email": email,
+        "headers": {"Authorization": f"Bearer {login.json()['access_token']}"},
+    }
 
 
 @pytest_asyncio.fixture
-async def project(client: AsyncClient, auth_headers: dict[str, str]) -> dict:
-    response = await client.post(
-        "/api/v1/projects", json={"name": "fixture project"}, headers=auth_headers
-    )
-    assert response.status_code == 201, response.text
-    return response.json()
+async def auth_headers(auth_user: dict) -> dict[str, str]:
+    """A freshly registered user's bearer headers."""
+    return auth_user["headers"]
+
+
+@pytest_asyncio.fixture
+async def github_account(auth_user: dict) -> None:
+    """Link a GitHub account to the session user: the import needs its token."""
+    from app.db.session import AsyncSessionLocal
+    from app.models.oauth import OAuthAccount
+
+    async with AsyncSessionLocal() as session:
+        session.add(
+            OAuthAccount(
+                user_id=auth_user["id"],
+                provider="github",
+                provider_user_id=uuid.uuid4().hex,
+                provider_login="octocat",
+                access_token="gh-token",
+            )
+        )
+        await session.commit()
+
+
+@pytest.fixture
+def github_download(monkeypatch, make_zip):
+    """Serve the GitHub zipball download from a locally built archive.
+
+    `install(files)` swaps what the next import downloads; a fresh file is built
+    per call because the pipeline deletes the archive it is handed.
+    """
+    chosen: dict[str, dict[str, str] | None] = {"files": None}
+
+    def install(files: dict[str, str] | None = None) -> None:
+        chosen["files"] = files
+
+        async def download(token, full_name, ref=None):
+            return str(
+                make_zip(chosen["files"] or demo_python_sources(), name="snapshot.zip")
+            )
+
+        monkeypatch.setattr(github_service, "download_repository_zip", download)
+
+    install()
+    return install
+
+
+@pytest_asyncio.fixture
+async def repo_import(github_account, github_download):
+    """The preconditions of `POST /projects/from-repo`, wired to a local archive.
+
+    Resolves to `github_download`, so a test that needs a specific snapshot calls
+    the fixture value with `{name: content}` before it imports.
+    """
+    return github_download
+
+
+@pytest_asyncio.fixture
+async def project(auth_user: dict) -> dict:
+    """A project row owned by the session user.
+
+    Projects are only *created* through the repository import now, so this seeds
+    the row directly (as `db_project` does for the engine tests) and hands back
+    the part of its representation the API tests read.
+    """
+    from app.db.session import AsyncSessionLocal
+    from app.models.project import Project
+
+    async with AsyncSessionLocal() as session:
+        project = Project(owner_id=auth_user["id"], name="fixture project")
+        session.add(project)
+        await session.commit()
+        await session.refresh(project)
+        return {"id": str(project.id), "name": project.name, "description": project.description}
 
 
 @pytest_asyncio.fixture

@@ -2,9 +2,9 @@
 
 Everything an analysis run is allowed to do is decided here, once:
 
-* `AnalysisConfigOverrides` is what a client may send (`POST
-  /projects/{id}/analyses` form field `config`, or `PATCH /projects/{id}`) — a
-  deliberately small, validated surface.
+* `AnalysisConfigOverrides` is what a client may send (`analysis_config` in the
+  `POST /projects/from-repo` body, or `PATCH /projects/{id}`) — a deliberately
+  small, validated surface.
 * `resolve_config()` merges those overrides onto the platform ceiling in
   `app.core.config.Settings` and **refuses** (never silently widens) anything
   that would escape a resource limit, disable a security protection or touch the

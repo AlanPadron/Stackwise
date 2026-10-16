@@ -33,10 +33,19 @@
     --sw-border: rgba(15, 23, 42, 0.14);
     --sw-border-strong: rgba(194, 65, 12, 0.5);
 
+    /* Rings are drawn *around* a control, so they sit next to the canvas or a
+       card, never on the control itself: at the old soft tints they measured
+       1.1:1 against the canvas — a focus ring nobody can see. These two are the
+       same hue at the strength a 3px ring needs (3.4:1 light, 3.7:1 dark). */
+    --sw-focus-ring: rgba(194, 65, 12, 0.75);
+    --sw-danger-ring: rgba(192, 57, 74, 0.6);
+
     /* --- ambient wash (static decorative backdrop) ------------------ */
+    /* Warm corner-to-corner: brand orange, amber and a low red, so every tone
+       in the backdrop belongs to the same family as the accent. */
     --sw-ambient-a: rgba(234, 88, 12, 0.1);
-    --sw-ambient-b: rgba(59, 130, 246, 0.07);
-    --sw-ambient-c: rgba(168, 85, 247, 0.05);
+    --sw-ambient-b: rgba(245, 158, 11, 0.08);
+    --sw-ambient-c: rgba(244, 63, 94, 0.05);
 
     /* --- text ------------------------------------------------------- */
     --sw-text: #14181f;
@@ -87,10 +96,20 @@
 
     /* --- motion (every animation below runs a finite number of times) */
     --sw-t-fast: 140ms;
+    /* A hover is a response, not a transition: it wants to be seen as instant. */
+    --sw-t-hover: 160ms;
     --sw-t: 220ms;
+    /* Entrance of content: long enough to read as movement, short enough that
+       the screen is never waiting on it. */
+    --sw-t-enter: 340ms;
     --sw-t-slow: 400ms;
     --sw-ease: cubic-bezier(0.32, 0.72, 0, 1);
     --sw-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    /* Symmetric, for anything that *loops*: with an ease-out curve an infinite
+       animation snaps at the top of every cycle and then crawls. */
+    --sw-ease-inout: cubic-bezier(0.62, 0.02, 0.36, 1);
+    /* The toggle: a hand-thrown switch settles with a little weight. */
+    --sw-ease-spring: cubic-bezier(0.34, 1.24, 0.44, 1);
 
     /* --- typography ------------------------------------------------- */
     --sw-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter',
@@ -102,7 +121,8 @@
       'Times New Roman', serif;
   }
 
-  /* Dark theme: deep slate, no absolute black, no warm cast. */
+  /* Dark theme: deep slate, no absolute black. The neutrals stay cool on
+     purpose — it is the wash that carries the brand's warmth. */
   .dark {
     color-scheme: dark;
     --sw-bg: #0b0f16;
@@ -113,14 +133,22 @@
     --sw-hairline: rgba(255, 255, 255, 0.1);
     --sw-border: rgba(255, 255, 255, 0.16);
     --sw-border-strong: rgba(251, 146, 60, 0.55);
+    --sw-focus-ring: rgba(251, 146, 60, 0.7);
+    --sw-danger-ring: rgba(242, 117, 138, 0.65);
 
+    /* The wash is warm here too: over near-black the brand orange and amber
+       read as a glow rather than a stain, which is what a saturated warm tint
+       does over a light canvas — and what a blue or violet one is for. */
     --sw-ambient-a: rgba(249, 115, 22, 0.12);
-    --sw-ambient-b: rgba(59, 130, 246, 0.09);
-    --sw-ambient-c: rgba(147, 51, 234, 0.08);
+    --sw-ambient-b: rgba(245, 158, 11, 0.1);
+    --sw-ambient-c: rgba(244, 63, 94, 0.09);
 
     --sw-text: #edf0f5;
     --sw-text-muted: #9aa4b2;
-    --sw-text-faint: #6b7482;
+    /* Was #6b7482: 3.6:1 against a card, which is under AA for the 11–12px
+       labels it is used for (table headers, rule ids, hints, the version badge).
+       This keeps it visibly softer than `muted` while clearing AA. */
+    --sw-text-faint: #8a94a6;
 
     --sw-accent: #fb923c;
     --sw-accent-hover: #fdba74;
@@ -160,8 +188,31 @@
     font-family: var(--sw-font);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    transition: background-color var(--sw-t-slow) var(--sw-ease),
-      color var(--sw-t-slow) var(--sw-ease);
+  }
+
+  /* Theme swap.
+     -----------------------------------------------------------------
+     `ThemeContext` puts `sw-theming` on <html> for one swap and takes it
+     off again, which is what makes the whole screen change theme in one
+     motion. A transition on `body` alone did the opposite: the colours
+     that come from a class snapped instantly while anything *inheriting*
+     body's `color` interpolated, so for ~400ms the screen was half old
+     theme and half new one. Scoped to the swap so no unrelated repaint
+     picks up a transition.
+     `no-preference` is part of the rule, not a detail: the swap rule is
+     `!important` and would otherwise out-specify the global
+     `prefers-reduced-motion` collapse at the bottom of this file. */
+  @media (prefers-reduced-motion: no-preference) {
+    html.sw-theming,
+    html.sw-theming body,
+    html.sw-theming body *:not(svg) {
+      transition: background-color var(--sw-t) var(--sw-ease),
+        color var(--sw-t) var(--sw-ease),
+        border-color var(--sw-t) var(--sw-ease),
+        box-shadow var(--sw-t) var(--sw-ease),
+        fill var(--sw-t) var(--sw-ease),
+        stroke var(--sw-t) var(--sw-ease) !important;
+    }
   }
 
   ::selection {
@@ -211,6 +262,9 @@
 
   .sw-card--interactive {
     cursor: pointer;
+    /* A card under the pointer answers in hover time, not in the slower time
+       the same card takes to settle when it is selected. */
+    transition-duration: var(--sw-t-hover);
   }
 
   .sw-card--interactive:hover {
@@ -251,7 +305,15 @@
     font-weight: 900;
     font-size: 1.5rem;
     line-height: 1;
-    padding-bottom: 0.08em;
+    /* Optical centring. `place-items: center` centres the glyph's *em box*, and
+       this W is not symmetrical inside it: the swash reaches up and to the
+       right, so what the browser centres is not what the eye reads. Measured on
+       the rendered tile (96px tile, 54.4px glyph): 12px of tile above the ink
+       against 30px below, and 24px left against 11px right. A padding on one
+       side moves centred content by *half* that padding, which is why these are
+       twice the correction; being in em, every size (24 / 38.4 / 54.4px) lands
+       the same way — the ink ends up with 14.4px of tile on each side. */
+    padding: 0.185em 0.176em 0 0;
     user-select: none;
   }
 
@@ -281,6 +343,13 @@
     font-weight: 900;
     font-size: 1.12em;
     color: var(--sw-accent);
+    /* Spacing around the display W, measured by ink rather than by advance
+       width: its swash and tail run edge to edge in their box, and the "k"
+       before it overshoots its own advance with its leg, so equal margins still
+       left the two letters touching (0px of background) while the "i" side had
+       2.5px. The left margin therefore carries that overshoot; in em, so the
+       sidebar (18px) and the auth panel (36px) keep the same air. */
+    margin-inline: 0.105em 0.045em;
   }
 
   .sw-sidebar {
@@ -311,6 +380,10 @@
     backdrop-filter: blur(var(--sw-blur-lg));
     -webkit-backdrop-filter: blur(var(--sw-blur-lg));
     overflow: hidden;
+    /* Both popovers hang off a button in the bottom-right corner: scaling from
+       that corner is what makes `sw-enter-pop` read as the panel coming out of
+       its trigger rather than out of its own middle. */
+    transform-origin: 100% 100%;
   }
 
   .sw-fab {
@@ -339,7 +412,27 @@
 
   .sw-fab:focus-visible {
     outline: none;
-    box-shadow: var(--sw-shadow-out), 0 0 0 3px var(--sw-accent-soft);
+    box-shadow: var(--sw-shadow-out), 0 0 0 3px var(--sw-focus-ring);
+  }
+
+  /* The findings agent's button. Every other floating control is neutral so the
+     chrome stays quiet; this one is the way into a conversation, so it carries
+     the brand colour instead of borrowing the smudged value of the page behind
+     it. The neutral fab measures 3.2:1 for its own icon against its own fill in
+     the dark theme (a 1.8px stroke at 20px, antialiased over a translucent
+     pane), which is why the robot disappeared there; on the accent tint it is
+     6.4:1 dark and 3.9:1 light, on a fill that is itself visible against both
+     canvases. */
+  .sw-fab--accent {
+    color: var(--sw-accent);
+    border-color: var(--sw-accent-line);
+    background-color: var(--sw-accent-soft);
+  }
+
+  .sw-fab--accent:hover {
+    color: var(--sw-on-accent);
+    background-color: var(--sw-accent);
+    border-color: var(--sw-accent-hover);
   }
 
   /* Static decorative wash — no animation on purpose. */
@@ -398,7 +491,7 @@
 
   .sw-btn:focus-visible {
     outline: none;
-    box-shadow: var(--sw-shadow-out-sm), 0 0 0 3px var(--sw-accent-soft);
+    box-shadow: var(--sw-shadow-out-sm), 0 0 0 3px var(--sw-focus-ring);
   }
 
   .sw-btn:disabled {
@@ -481,7 +574,7 @@
     flex: none;
     border-radius: var(--sw-radius-full);
     background-color: currentColor;
-    animation: sw-breathe 1.2s var(--sw-ease) infinite;
+    animation: sw-breathe 1.2s var(--sw-ease-inout) infinite;
   }
 
   /* ===================== form controls =============================== */
@@ -519,7 +612,7 @@
   .sw-input:focus {
     outline: none;
     border-color: var(--sw-border-strong);
-    box-shadow: var(--sw-shadow-in-sm), 0 0 0 3px var(--sw-accent-soft);
+    box-shadow: var(--sw-shadow-in-sm), 0 0 0 3px var(--sw-focus-ring);
   }
 
   .sw-input:disabled {
@@ -533,7 +626,7 @@
   }
 
   .sw-input--error {
-    box-shadow: var(--sw-shadow-in-sm), 0 0 0 3px var(--sw-danger-soft);
+    box-shadow: var(--sw-shadow-in-sm), 0 0 0 3px var(--sw-danger-ring);
   }
 
   .sw-hint {
@@ -568,7 +661,7 @@
 
   .sw-switch:focus-visible {
     outline: none;
-    box-shadow: var(--sw-shadow-in-sm), 0 0 0 3px var(--sw-accent-soft);
+    box-shadow: var(--sw-shadow-in-sm), 0 0 0 3px var(--sw-focus-ring);
   }
 
   .sw-switch__thumb {
@@ -585,7 +678,7 @@
     font-size: 0.7rem;
     line-height: 1;
     transform: translateY(-50%);
-    transition: transform var(--sw-t) var(--sw-ease-out),
+    transition: transform var(--sw-t) var(--sw-ease-spring),
       box-shadow var(--sw-t) var(--sw-ease);
   }
 
@@ -637,7 +730,7 @@
 
   .sw-seg__btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px var(--sw-accent-soft);
+    box-shadow: 0 0 0 3px var(--sw-focus-ring);
   }
 
   .sw-seg__btn--active {
@@ -684,7 +777,7 @@
 
   .sw-nav-item:focus-visible {
     outline: none;
-    box-shadow: var(--sw-shadow-out-sm), 0 0 0 3px var(--sw-accent-soft);
+    box-shadow: var(--sw-shadow-out-sm), 0 0 0 3px var(--sw-focus-ring);
   }
 
   .sw-nav-item--active {
@@ -811,11 +904,18 @@
   }
 
   /* ===================== finite motion =============================== */
+  /* Which curve goes where, since every animation here picks one of four:
+       --sw-ease-out     things that arrive (`.sw-enter*`, the mascot's nods)
+       --sw-ease-inout   things that loop (breathing, sways, the loader)
+       --sw-ease-spring  the toggle, the one control that has weight
+       --sw-ease         everything in between (hovers, colours, presses)
+     A loop on an ease-out curve is the one combination that always looks
+     wrong: the motion snaps at the peak of the cycle and then crawls. */
 
   @keyframes sw-rise {
     from {
       opacity: 0;
-      transform: translateY(6px);
+      transform: translateY(8px);
     }
     to {
       opacity: 1;
@@ -857,41 +957,43 @@
   }
 
   .sw-enter {
-    animation: sw-rise var(--sw-t-slow) var(--sw-ease-out) both;
+    animation: sw-rise var(--sw-t-enter) var(--sw-ease-out) both;
   }
 
   .sw-enter-fade {
-    animation: sw-fade var(--sw-t-slow) var(--sw-ease-out) both;
+    animation: sw-fade var(--sw-t-enter) var(--sw-ease-out) both;
   }
 
   .sw-enter-pop {
-    animation: sw-pop var(--sw-t-slow) var(--sw-ease-out) both;
+    animation: sw-pop var(--sw-t-enter) var(--sw-ease-out) both;
   }
 
-  /* Sequential entrance without per-element inline styles. */
+  /* Sequential entrance without per-element inline styles. 45ms apart: at 60ms
+     the eighth card of a list landed half a second after the first, which read
+     as the page still loading rather than as one movement. */
   .sw-stagger > *:nth-child(1) {
     animation-delay: 0ms;
   }
   .sw-stagger > *:nth-child(2) {
-    animation-delay: 60ms;
+    animation-delay: 45ms;
   }
   .sw-stagger > *:nth-child(3) {
-    animation-delay: 120ms;
+    animation-delay: 90ms;
   }
   .sw-stagger > *:nth-child(4) {
-    animation-delay: 180ms;
+    animation-delay: 135ms;
   }
   .sw-stagger > *:nth-child(5) {
-    animation-delay: 240ms;
+    animation-delay: 180ms;
   }
   .sw-stagger > *:nth-child(6) {
-    animation-delay: 300ms;
+    animation-delay: 225ms;
   }
   .sw-stagger > *:nth-child(7) {
-    animation-delay: 360ms;
+    animation-delay: 270ms;
   }
   .sw-stagger > *:nth-child(8) {
-    animation-delay: 420ms;
+    animation-delay: 315ms;
   }
 
   .sw-loader {
@@ -905,7 +1007,7 @@
     height: 0.6rem;
     border-radius: var(--sw-radius-full);
     background-color: var(--sw-accent);
-    animation: sw-breathe 1.4s var(--sw-ease) infinite;
+    animation: sw-breathe 1.4s var(--sw-ease-inout) infinite;
   }
 
   .sw-loader span:nth-child(2) {
@@ -1045,13 +1147,13 @@
   .sw-robot__laptop {
     opacity: 0;
     transform: translateY(9px) scale(0.94);
-    transition: opacity var(--sw-t) var(--sw-ease), transform 260ms var(--sw-ease);
+    transition: opacity var(--sw-t) var(--sw-ease), transform var(--sw-t) var(--sw-ease-out);
   }
 
   /* Hinged at the shoulder, not the middle of the limb. */
   .sw-robot__arm {
     transform-origin: 50% 12%;
-    transition: transform 260ms var(--sw-ease);
+    transition: transform var(--sw-t) var(--sw-ease-out);
   }
 
   /* --- at rest ------------------------------------------------------ */
@@ -1087,11 +1189,11 @@
   }
 
   .sw-robot__torso {
-    animation: sw-robot-breathe 4.2s var(--sw-ease) infinite;
+    animation: sw-robot-breathe 4.2s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot__head {
-    animation: sw-robot-sway 6s var(--sw-ease) infinite;
+    animation: sw-robot-sway 6s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot__pupil {
@@ -1110,7 +1212,7 @@
   }
 
   .sw-robot[data-state='attentive'] .sw-robot__head {
-    animation: sw-robot-tilt 3.2s var(--sw-ease) infinite;
+    animation: sw-robot-tilt 3.2s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='attentive'] .sw-robot__pupil {
@@ -1166,11 +1268,11 @@
   }
 
   .sw-robot[data-state='thinking'] .sw-robot__eyes {
-    animation: sw-robot-look 3.6s var(--sw-ease) infinite;
+    animation: sw-robot-look 3.6s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='thinking'] .sw-robot__led {
-    animation: sw-robot-led 1.5s var(--sw-ease) infinite;
+    animation: sw-robot-led 1.5s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='thinking'] .sw-robot__led:nth-child(2) {
@@ -1186,7 +1288,7 @@
        once for 0.01ms and then reverts to the declared value, and the dots are
        what marks "thinking" without relying on the antenna's colour. */
     opacity: 0.85;
-    animation: sw-robot-float 1.8s var(--sw-ease) infinite;
+    animation: sw-robot-float 1.8s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='thinking'] .sw-robot__thought:nth-child(2) {
@@ -1249,11 +1351,11 @@
   }
 
   .sw-robot[data-state='typing'] .sw-robot__arm--left {
-    animation: sw-robot-type-left 0.92s var(--sw-ease) infinite;
+    animation: sw-robot-type-left 0.92s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='typing'] .sw-robot__arm--right {
-    animation: sw-robot-type-right 0.92s var(--sw-ease) infinite;
+    animation: sw-robot-type-right 0.92s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='typing'] .sw-robot__caret {
@@ -1305,11 +1407,11 @@
   }
 
   .sw-robot[data-state='success'] .sw-robot__head {
-    animation: sw-robot-nod-up 0.9s var(--sw-ease) 1;
+    animation: sw-robot-nod-up 0.9s var(--sw-ease-out) 1;
   }
 
   .sw-robot[data-state='success'] .sw-robot__sparkle {
-    animation: sw-robot-sparkle 0.9s var(--sw-ease) 1;
+    animation: sw-robot-sparkle 0.9s var(--sw-ease-out) 1;
   }
 
   /* --- error: it could not answer ----------------------------------- */
@@ -1340,7 +1442,7 @@
   }
 
   .sw-robot[data-state='error'] .sw-robot__head {
-    animation: sw-robot-shake 0.42s var(--sw-ease) 1;
+    animation: sw-robot-shake 0.42s var(--sw-ease-out) 1;
   }
 
   .sw-robot[data-state='error'] .sw-robot__antenna-tip {
@@ -1359,7 +1461,7 @@
   }
 
   .sw-robot[data-state='user-sent'] .sw-robot__head {
-    animation: sw-robot-nod 0.5s var(--sw-ease) 1;
+    animation: sw-robot-nod 0.5s var(--sw-ease-out) 1;
   }
 
   /* --- attention from the pointer ----------------------------------- */

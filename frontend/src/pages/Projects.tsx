@@ -49,9 +49,6 @@ const Projects: React.FC = () => {
                     <Button onClick={() => navigate('/projects/import')}>
                         {t('repos.title')}
                     </Button>
-                    <Button variant="primary" onClick={() => navigate('/projects/new')}>
-                        {t('dashboard.newProject')}
-                    </Button>
                 </div>
             </header>
 

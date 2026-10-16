@@ -101,11 +101,14 @@ class Settings(BaseSettings):
     # How long a dispatched run may wait for a free execution slot before it is
     # failed with `rate_limited` (a bounded queue instead of an unbounded one).
     ANALYSIS_QUEUE_WAIT_SECONDS: int = 120
+    # In-flight ceilings. A run is created together with its project, so a project
+    # never queues more than one at a time: today only the per-user ceiling binds,
+    # and the per-project value stays as the documented platform ceiling.
     ANALYSIS_MAX_ACTIVE_RUNS_PER_PROJECT: int = 3
     ANALYSIS_MAX_ACTIVE_RUNS_PER_USER: int = 5
     # Analysis-start requests accepted per user per minute (process-local).
     ANALYSIS_RATE_LIMIT_PER_MINUTE: int = 10
-    # Rejected before the body is read (multipart uploads, JSON config).
+    # Rejected before the body is read (JSON bodies only).
     ANALYSIS_MAX_REQUEST_BODY_BYTES: int = 16_000_000
     # A run still `pending`/`running` after started_at + the analysis budget plus
     # this grace period is reaped to `failed` so it cannot hang forever.

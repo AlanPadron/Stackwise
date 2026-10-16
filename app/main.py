@@ -61,8 +61,9 @@ app = FastAPI(
 async def limit_request_body(request: Request, call_next):
     """Refuse oversized bodies before they are read.
 
-    Archive uploads are additionally streamed with their own cap, so a client
-    that omits `Content-Length` (chunked encoding) cannot bypass the limit.
+    A client that omits `Content-Length` (chunked encoding) cannot slip past
+    this check, but nothing here reads a body — the routes that accept one
+    (`POST /projects/from-repo`) validate their own fields.
     """
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > settings.ANALYSIS_MAX_REQUEST_BODY_BYTES:

@@ -1,8 +1,8 @@
-"""Safe intake of a ZIP archive (an upload, or a GitHub zipball).
+"""Safe intake of a GitHub repository zipball.
 
-The archive is untrusted input, including when it comes from a public GitHub
-repository. This module is the only place that turns bytes into a directory
-tree, and it enforces, in one pass over a single `ZipFile` handle:
+The archive is untrusted input, even though it comes from a repository the
+caller's token can read. This module is the only place that turns bytes into a
+directory tree, and it enforces, in one pass over a single `ZipFile` handle:
 
 * archive size, per-file size, total extracted size, file count, nesting depth;
 * compression ratio (archive bombs), including entries that lie about their size;
@@ -14,8 +14,8 @@ tree, and it enforces, in one pass over a single `ZipFile` handle:
 Nothing from the archive's metadata is trusted: `external_attr` is used only to
 *reject* unusual entries, never to set permissions or ownership.
 
-`inspect_archive()` runs the same validation without writing anything, so the API
-can reject a bad archive with a 400 before a run is even created.
+`extract_archive()` validates and writes in one pass, so a rejected archive
+leaves nothing behind.
 """
 
 import hashlib
@@ -61,12 +61,6 @@ class ArchiveReport:
     max_depth: int
 
 
-def inspect_archive(archive_path: Path, config: AnalysisConfig) -> ArchiveReport:
-    """Validate an archive without extracting it. Raises on anything unsafe."""
-    with _open_archive(archive_path, config) as archive:
-        return _validate(archive, config)
-
-
 def extract_archive(archive_path: Path, destination: Path, config: AnalysisConfig) -> ArchiveReport:
     """Validate and extract `archive_path` into `destination` (created if absent)."""
     destination.mkdir(parents=True, exist_ok=True)
@@ -87,12 +81,12 @@ class _OpenedArchive:
     def __enter__(self) -> zipfile.ZipFile:
         path = self._path
         if not path.exists():
-            raise SourceAcquisitionError("The uploaded archive no longer exists")
+            raise SourceAcquisitionError("The downloaded snapshot no longer exists")
         if not path.is_file():
-            raise InvalidSourceError("The uploaded archive is not a regular file")
+            raise InvalidSourceError("The downloaded snapshot is not a regular file")
         size = path.stat().st_size
         if size <= 0:
-            raise InvalidSourceError("The uploaded archive is empty")
+            raise InvalidSourceError("The downloaded snapshot is empty")
         if size > self._config.max_archive_bytes:
             raise ResourceLimitError(
                 f"The archive exceeds the {self._config.max_archive_bytes // (1024 * 1024)}MB limit"
@@ -353,7 +347,7 @@ def sorted_walk(root: Path):
 
 
 def discard_archive(path: "Path | str") -> None:
-    """Delete a spooled archive (an upload or a GitHub download); never raises.
+    """Delete a spooled archive (the downloaded GitHub snapshot); never raises.
 
     Two callers need this: the API, when a request fails *before* the pipeline
     takes ownership of the file, and the orchestrator, which discards it on
@@ -370,7 +364,7 @@ def discard_archive(path: "Path | str") -> None:
 
 
 class ArchiveSourceProvider:
-    """Source provider for an archive already on disk (upload or GitHub download).
+    """Source provider for the repository snapshot already on disk.
 
     `acquire` is blocking (extraction and hashing are IO/CPU bound); the
     orchestrator runs it in a worker thread.
@@ -381,7 +375,7 @@ class ArchiveSourceProvider:
         archive_path: Path,
         *,
         config: AnalysisConfig,
-        source_type: str = "zip",
+        source_type: str = "github",
         origin: str | None = None,
     ):
         self._archive_path = Path(archive_path)

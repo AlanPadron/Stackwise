@@ -7,7 +7,7 @@ and persists the result. The frontend only renders what the API returns; it neve
 implements a rule, a severity, a metric or a score.
 
 ```
-POST /projects/{id}/analyses ──▶ AnalysisRun(pending) ──▶ 202
+POST /projects/from-repo      ──▶ AnalysisRun(pending) ──▶ 201
         (dispatcher)
               │
         ┌─────▼──────────────────────────────────────────────────────────┐
@@ -40,19 +40,17 @@ GET /findings/{id}            ◀── one finding, ownership checked
 
 ## 2. Source acquisition
 
-Two providers exist for the two input paths, and both produce the same
-`SourceSnapshot` (root directory, origin, content hash):
+One source provider remains, and it produces a `SourceSnapshot` (root directory,
+origin, content hash) from the **GitHub zipball** (`POST /projects/from-repo`),
+downloaded with the user's own OAuth token, never a service token.
 
-* an **uploaded ZIP** (`POST /projects/{id}/analyses`, field `file`);
-* a **GitHub zipball** (`POST /projects/from-repo`), downloaded with the user's
-  own OAuth token, never a service token.
-
-Both go through `app/analysis/sources/archive.py`, which validates the archive and
-then extracts it in a single pass over one `ZipFile` handle:
+The provider hands the zipball to `app/analysis/sources/archive.py`, which
+validates the archive and then extracts it in a single pass over one `ZipFile`
+handle:
 
 | Guard | Behaviour |
 |---|---|
-| Archive size | `ANALYSIS_MAX_ARCHIVE_SIZE_MB`, enforced while the upload/download streams |
+| Archive size | `ANALYSIS_MAX_ARCHIVE_SIZE_MB`, enforced while the download streams |
 | Entry count | `ANALYSIS_MAX_FILE_COUNT` |
 | Per-file size | `ANALYSIS_MAX_FILE_SIZE_KB`, re-checked against the bytes actually written |
 | Total extracted size | `ANALYSIS_MAX_EXTRACTED_SIZE_MB`, also re-checked while writing |
@@ -357,7 +355,7 @@ silently reduced), and a value that would escape a limit cannot be stored.
 |---|---|
 | `ANALYSIS_*` env settings | analyzer enablement, ruff rule selection, timeouts, thresholds, all size/count/duration limits, concurrency, rate limit, request body size |
 | `projects.analysis_config` (`PATCH /projects/{id}`) | `excluded_paths`, `enabled_analyzers`, `ruff_select`, `complexity_threshold`, `maintainability_rank`, `max_findings_per_run`, `analyzer_timeout_seconds` |
-| `POST /projects/{id}/analyses` form field `config` | the same block, for one run (stored on the run; wins over the project) |
+| `POST /projects/from-repo` body field `analysis_config` | the same block, for the run the import starts (stored on the run; wins over the project) |
 
 The resolved configuration is hashed into `analysis_runs.config_hash` and echoed
 in `metrics.config_hash`, `metrics.limits` and `metrics.exclusions`, so a stored
@@ -366,10 +364,10 @@ run explains exactly what executed. See `.env.example` for every variable.
 Example:
 
 ```bash
-curl -X POST "$API/projects/$PID/analyses" -H "$AUTH" \
-  -F file=@repo.zip \
-  -F 'config={"enabled_analyzers":["ruff","bandit"],"excluded_paths":["tests/**","migrations"],
-               "complexity_threshold":8,"max_findings_per_run":500}'
+curl -X POST "$API/projects/from-repo" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"repository":"owner/name","ref":"main",
+       "analysis_config":{"enabled_analyzers":["ruff","bandit"],"excluded_paths":["tests/**","migrations"],
+                          "complexity_threshold":8,"max_findings_per_run":500}}'
 ```
 
 ## 11. Database
@@ -427,7 +425,7 @@ ZONE`.
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/api/v1/projects/{id}/analyses` | multipart `file` (+ optional `config` JSON) → `202` pending run; `400` invalid/malicious archive, `413` too large, `422` bad config, `429` rate/in-flight limit, `403` foreign project |
+| `POST` | `/api/v1/projects/from-repo` | JSON body (`repository`, optional `ref`/`name`/`description`/`analysis_config`) → `201` `{project, run}` with a pending run; `409` no GitHub account linked, `404` repository not accessible, `422` bad repository/ref/config, `502` GitHub failure or archive over the size limit |
 | `GET` | `/api/v1/projects/{id}/analyses` | `limit`(≤200), `offset`, `status`, `source_type`; `X-Total-Count` |
 | `GET` | `/api/v1/analyses/{id}` | status, summary, metrics, risk, tool versions |
 | `GET` | `/api/v1/analyses/{id}/findings` | `limit`(≤200), `offset`, `severity`, `category`, `tool`, `rule_id`, `file_path`, `sort`; `X-Total-Count` |

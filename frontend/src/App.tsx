@@ -16,7 +16,6 @@ import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
-import NewProject from './pages/NewProject';
 import ImportRepo from './pages/ImportRepo';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -60,7 +59,6 @@ const AppContent: React.FC = () => {
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
-                <Route path="/projects/new" element={<ProtectedRoute><NewProject /></ProtectedRoute>} />
                 <Route path="/projects/import" element={<ProtectedRoute><ImportRepo /></ProtectedRoute>} />
                 <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

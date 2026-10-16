@@ -1,4 +1,9 @@
-"""Project CRUD. Every route is scoped to the caller's own projects."""
+"""Project CRUD and the repository import that creates projects.
+
+Every route is scoped to the caller's own projects. A project only exists with a
+repository behind it, so `POST /from-repo` is the one way to create one: it links
+the caller's GitHub account, downloads the snapshot and queues its first run.
+"""
 
 import logging
 from pathlib import Path
@@ -17,13 +22,12 @@ from app.analysis.redact import redact
 from app.analysis.sources.archive import discard_archive
 from app.analysis.status import AnalysisStatusService
 from app.api.deps import get_current_user, get_owned_project
-from app.api.v1.analyses import enforce_analysis_start_rate_limit
 from app.core.config import settings
+from app.core.ratelimit import analysis_start_limiter
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.project import (
-    ProjectCreate,
     ProjectFromRepo,
     ProjectFromRepoResponse,
     ProjectResponse,
@@ -46,14 +50,14 @@ async def create_project_from_repo(
 ):
     """Create a project from a GitHub repository and queue its first analysis.
 
-    The snapshot is downloaded with the caller's own GitHub token and then takes
-    exactly the same path as an uploaded ZIP: `pending` run returned here, the
-    pipeline runs in the background. Failure to reach GitHub is reported before
-    anything is created, so a user never ends up with an empty project.
+    The snapshot is downloaded with the caller's own GitHub token, then the
+    pipeline takes it from there: a `pending` run is returned here and the
+    analysis happens in the background. Failure to reach GitHub is reported
+    before anything is created, so a user never ends up with an empty project.
     """
     enforce_analysis_start_rate_limit(user)
     analysis_config = _resolve_config_or_422(payload.analysis_config)
-    await _enforce_run_caps(db, user)
+    await _enforce_active_run_cap(db, user)
 
     account = await oauth_service.find_account_for_user(db, user.id, "github")
     if account is None or not account.access_token:
@@ -129,24 +133,6 @@ async def create_project_from_repo(
     return {"project": project, "run": run}
 
 
-@router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
-async def create_project(
-    project_in: ProjectCreate,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    project = Project(
-        name=project_in.name,
-        description=project_in.description,
-        owner_id=user.id,
-        analysis_config=_stored_config(project_in.analysis_config),
-    )
-    db.add(project)
-    await db.commit()
-    await db.refresh(project)
-    return project
-
-
 @router.get("", response_model=list[ProjectResponse])
 async def list_projects(
     user: User = Depends(get_current_user),
@@ -200,6 +186,17 @@ async def delete_project(
 # --- helpers -----------------------------------------------------------------
 
 
+def enforce_analysis_start_rate_limit(user: User) -> None:
+    """The shared gate for every route that queues an analysis run."""
+    allowed, retry_after = analysis_start_limiter().check(str(user.id))
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many analysis requests; slow down",
+            headers={"Retry-After": str(max(1, int(retry_after) + 1))},
+        )
+
+
 def _resolve_config_or_422(overrides):
     try:
         return resolve_config(overrides)
@@ -229,7 +226,8 @@ def _stored_config(overrides) -> dict | None:
         ) from exc
 
 
-async def _enforce_run_caps(db: AsyncSession, user: User) -> None:
+async def _enforce_active_run_cap(db: AsyncSession, user: User) -> None:
+    """One project never holds two runs at once, so only the user ceiling bites."""
     active = await AnalysisStatusService(db).count_active_runs(owner_id=user.id)
     if active >= settings.ANALYSIS_MAX_ACTIVE_RUNS_PER_USER:
         raise HTTPException(

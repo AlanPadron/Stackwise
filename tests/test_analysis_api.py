@@ -1,9 +1,10 @@
 """API contract: authentication, ownership, pagination, filters, status codes."""
 
+import json
 import uuid
 
 import pytest
-from engine_builders import demo_python_sources
+from api_helpers import import_and_wait, import_repository, wait_for_run
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
@@ -17,37 +18,6 @@ ANALYSIS_ROUTES = (
 )
 
 
-async def _start_and_wait(client, headers, project_id, files=None, **form) -> dict:
-    """Upload an archive and wait for the run to reach a terminal state."""
-    import asyncio
-
-    response = await client.post(
-        f"/api/v1/projects/{project_id}/analyses",
-        headers=headers,
-        files={"file": ("demo.zip", _zip_bytes(files), "application/zip")},
-        data=form,
-    )
-    assert response.status_code == 202, response.text
-    body = response.json()
-    for _ in range(40):
-        polled = await client.get(f"/api/v1/analyses/{body['id']}", headers=headers)
-        if polled.json()["status"] not in ("pending", "running", "processing"):
-            return polled.json()
-        await asyncio.sleep(0.05)
-    raise AssertionError(f"run never finished: {body}")
-
-
-def _zip_bytes(files: dict[str, str] | None = None) -> bytes:
-    import io
-    import zipfile
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        for name, content in (files or demo_python_sources()).items():
-            archive.writestr(name, content)
-    return buffer.getvalue()
-
-
 # --- authentication and ownership --------------------------------------------
 
 
@@ -59,15 +29,14 @@ async def test_analysis_routes_require_authentication(client, template):
 
 
 async def test_starting_an_analysis_requires_authentication(client):
-    response = await client.post(
-        f"/api/v1/projects/{uuid.uuid4()}/analyses",
-        files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-    )
+    response = await import_repository(client, None, repository="octocat/demo")
     assert response.status_code == 401
 
 
-async def test_a_foreign_project_and_its_findings_are_forbidden(client, auth_headers, project):
-    run = await _start_and_wait(client, auth_headers, project["id"])
+async def test_a_foreign_project_and_its_findings_are_forbidden(
+    client, auth_headers, repo_import
+):
+    project, run = await import_and_wait(client, auth_headers)
     findings = await client.get(
         f"/api/v1/analyses/{run['id']}/findings", headers=auth_headers
     )
@@ -92,13 +61,10 @@ async def test_a_foreign_project_and_its_findings_are_forbidden(client, auth_hea
         await client.get(f"/api/v1/analyses/{run['id']}/findings", headers=stranger)
     ).status_code == 403
     assert (await client.get(f"/api/v1/findings/{finding_id}", headers=stranger)).status_code == 403
-    # Uploading into someone else's project is refused too.
-    response = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=stranger,
-        files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-    )
-    assert response.status_code == 403
+    # Reading is not the only thing that is scoped: acting on someone else's
+    # project is refused too, and the project is still there afterwards.
+    assert (await client.delete(f"/api/v1/projects/{project['id']}", headers=stranger)).status_code == 403
+    assert (await client.get(f"/api/v1/projects/{project['id']}", headers=auth_headers)).status_code == 200
 
 
 async def test_unknown_resources_are_not_found_and_malformed_ids_are_rejected(client, auth_headers):
@@ -112,50 +78,31 @@ async def test_unknown_resources_are_not_found_and_malformed_ids_are_rejected(cl
     ).status_code == 422
 
 
-# --- starting a run ----------------------------------------------------------
+# --- starting a run (repository import) --------------------------------------
 
 
-async def test_upload_returns_202_pending_and_then_completes(client, auth_headers, project):
-    response = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-    )
-    assert response.status_code == 202
+async def test_import_queues_a_pending_run_that_then_completes(client, auth_headers, repo_import):
+    response = await import_repository(client, auth_headers, repository="octocat/demo")
+
+    assert response.status_code == 201, response.text
     body = response.json()
-    assert body["status"] == "pending"
-    assert body["source_type"] == "zip"
-    assert body["source_ref"] == "demo.zip"
-    assert body["engine_version"] and body["config_hash"]
+    run = body["run"]
+    assert run["status"] == "pending"
+    assert run["source_type"] == "github"
+    assert run["source_ref"] == "github.com/octocat/demo"
+    assert run["engine_version"] and run["config_hash"]
+    assert body["project"]["name"] == "demo"
 
-    run = await _start_and_wait(client, auth_headers, project["id"])
-    assert run["status"] == "completed"
-    assert run["summary"]["total_findings"] >= 5
-    assert run["metrics"]["files"]["analyzed"] == 2
-    assert run["risk"]["algorithm_version"]
-    assert set(run["tool_versions"]) == {"ruff", "bandit", "radon"}
-
-
-async def test_invalid_archives_are_rejected_before_a_run_is_created(client, auth_headers, project):
-    not_a_zip = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("bad.zip", b"definitely not a zip", "application/zip")},
-    )
-    assert not_a_zip.status_code == 400
-
-    traversal = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("evil.zip", _zip_bytes({"../outside.py": "x = 1\n"}), "application/zip")},
-    )
-    assert traversal.status_code == 400
-    assert "traversal" in traversal.json()["detail"].lower()
+    finished = await wait_for_run(client, auth_headers, run["id"])
+    assert finished["status"] == "completed"
+    assert finished["summary"]["total_findings"] >= 5
+    assert finished["metrics"]["files"]["analyzed"] == 2
+    assert finished["risk"]["algorithm_version"]
+    assert set(finished["tool_versions"]) == {"ruff", "bandit", "radon"}
 
 
-async def test_configuration_overrides_are_validated(client, auth_headers, project):
+async def test_configuration_overrides_are_validated(client, auth_headers, repo_import):
     cases = {
-        "{not json": 422,
         '{"enabled_analyzers": ["nonexistent"]}': 422,
         '{"enabled_analyzers": []}': 422,
         '{"ruff_select": [";rm -rf /"]}': 422,
@@ -167,21 +114,25 @@ async def test_configuration_overrides_are_validated(client, auth_headers, proje
         '{"unknown_setting": 1}': 422,
     }
     for payload, expected in cases.items():
-        response = await client.post(
-            f"/api/v1/projects/{project['id']}/analyses",
-            headers=auth_headers,
-            files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-            data={"config": payload},
+        response = await import_repository(
+            client, auth_headers, analysis_config=json.loads(payload)
         )
         assert response.status_code == expected, f"{payload} → {response.status_code}"
 
+    # A body that is not JSON at all is refused before the handler runs.
+    malformed = await client.post(
+        "/api/v1/projects/from-repo",
+        content=b"{not json",
+        headers={**auth_headers, "Content-Type": "application/json"},
+    )
+    assert malformed.status_code == 422
 
-async def test_valid_overrides_are_stored_on_the_run_and_applied(client, auth_headers, project):
-    run = await _start_and_wait(
+
+async def test_valid_overrides_are_stored_on_the_run_and_applied(client, auth_headers, repo_import):
+    _, run = await import_and_wait(
         client,
         auth_headers,
-        project["id"],
-        config='{"enabled_analyzers": ["ruff"], "complexity_threshold": 3}',
+        analysis_config={"enabled_analyzers": ["ruff"], "complexity_threshold": 3},
     )
     assert run["analysis_config"] == {"enabled_analyzers": ["ruff"], "complexity_threshold": 3}
     assert set(run["tool_versions"]) == {"ruff"}
@@ -189,20 +140,11 @@ async def test_valid_overrides_are_stored_on_the_run_and_applied(client, auth_he
     assert set(run["metrics"]["limits"]["overridden"]) == {"enabled_analyzers", "complexity_threshold"}
 
 
-async def test_empty_upload_is_rejected(client, auth_headers, project):
-    response = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("empty.zip", b"", "application/zip")},
-    )
-    assert response.status_code == 400
-
-
 # --- reading runs ------------------------------------------------------------
 
 
-async def test_run_history_is_paginated_and_filterable(client, auth_headers, project):
-    await _start_and_wait(client, auth_headers, project["id"])
+async def test_run_history_is_paginated_and_filterable(client, auth_headers, repo_import):
+    project, _ = await import_and_wait(client, auth_headers)
 
     response = await client.get(
         f"/api/v1/projects/{project['id']}/analyses?limit=1", headers=auth_headers
@@ -230,8 +172,8 @@ async def test_run_history_is_paginated_and_filterable(client, auth_headers, pro
 # --- reading findings --------------------------------------------------------
 
 
-async def test_findings_are_paginated_with_a_total_count(client, auth_headers, project):
-    run = await _start_and_wait(client, auth_headers, project["id"])
+async def test_findings_are_paginated_with_a_total_count(client, auth_headers, repo_import):
+    _, run = await import_and_wait(client, auth_headers)
 
     response = await client.get(
         f"/api/v1/analyses/{run['id']}/findings?limit=2&offset=0", headers=auth_headers
@@ -249,8 +191,8 @@ async def test_findings_are_paginated_with_a_total_count(client, auth_headers, p
     assert {item["id"] for item in page}.isdisjoint({item["id"] for item in rest.json()})
 
 
-async def test_finding_filters_are_validated(client, auth_headers, project):
-    run = await _start_and_wait(client, auth_headers, project["id"])
+async def test_finding_filters_are_validated(client, auth_headers, repo_import):
+    _, run = await import_and_wait(client, auth_headers)
     base = f"/api/v1/analyses/{run['id']}/findings"
 
     ruff_only = await client.get(f"{base}?tool=ruff", headers=auth_headers)
@@ -292,8 +234,8 @@ async def test_finding_filters_are_validated(client, auth_headers, project):
         assert (await client.get(f"{base}{query}", headers=auth_headers)).status_code == 422
 
 
-async def test_single_finding_endpoint_returns_the_canonical_shape(client, auth_headers, project):
-    run = await _start_and_wait(client, auth_headers, project["id"])
+async def test_single_finding_endpoint_returns_the_canonical_shape(client, auth_headers, repo_import):
+    project, run = await import_and_wait(client, auth_headers)
     listed = (await client.get(f"/api/v1/analyses/{run['id']}/findings", headers=auth_headers)).json()
 
     response = await client.get(f"/api/v1/findings/{listed[0]['id']}", headers=auth_headers)
@@ -334,65 +276,47 @@ async def test_findings_of_an_unknown_run_are_not_found(client, auth_headers):
 # --- limits ------------------------------------------------------------------
 
 
-async def test_rate_limit_is_enforced_on_analysis_start(client, auth_headers, project, monkeypatch):
+async def test_rate_limit_is_enforced_on_analysis_start(client, auth_headers, repo_import, monkeypatch):
     monkeypatch.setattr(settings, "ANALYSIS_RATE_LIMIT_PER_MINUTE", 1)
-    first = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-    )
-    assert first.status_code == 202
-    second = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-    )
+    first = await import_repository(client, auth_headers, repository="octocat/one")
+    assert first.status_code == 201
+    second = await import_repository(client, auth_headers, repository="octocat/two")
     assert second.status_code == 429
     assert second.headers["retry-after"]
 
 
-async def test_in_flight_run_caps_are_enforced(client, auth_headers, project, monkeypatch):
-    monkeypatch.setattr(settings, "ANALYSIS_MAX_ACTIVE_RUNS_PER_PROJECT", 0)
-    response = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-    )
+async def test_in_flight_run_caps_are_enforced(client, auth_headers, repo_import, monkeypatch):
+    monkeypatch.setattr(settings, "ANALYSIS_MAX_ACTIVE_RUNS_PER_USER", 0)
+    response = await import_repository(client, auth_headers, repository="octocat/demo")
     assert response.status_code == 429
+    assert response.headers["retry-after"]
 
 
-async def test_a_failed_start_does_not_leave_the_uploaded_archive_behind(
-    client, auth_headers, project, monkeypatch
+async def test_a_failed_import_does_not_leave_the_downloaded_snapshot_behind(
+    client, auth_headers, repo_import, temp_root, monkeypatch
 ):
-    """A request that dies after spooling the upload must still clean up."""
-    import tempfile
-    from pathlib import Path
-
+    """A request that dies after the download must still clean up after itself."""
     from app.analysis.persistence import AnalysisPersistenceService
 
     async def boom(self, *args, **kwargs):
         raise OperationalError("INSERT INTO analysis_runs", {}, Exception("database gone"))
 
     monkeypatch.setattr(AnalysisPersistenceService, "create_run", boom)
-    zips_before = set(Path(tempfile.gettempdir()).glob("*.zip"))
 
-    response = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
-        headers=auth_headers,
-        files={"file": ("demo.zip", _zip_bytes(), "application/zip")},
-    )
+    response = await import_repository(client, auth_headers, repository="octocat/demo")
 
     assert response.status_code == 503
-    assert set(Path(tempfile.gettempdir()).glob("*.zip")) <= zips_before
+    # Neither the downloaded snapshot nor the project it was for is left behind.
+    assert not (temp_root / "snapshot.zip").exists()
+    assert (await client.get("/api/v1/projects", headers=auth_headers)).json() == []
 
 
-async def test_oversized_body_is_refused(client, project, auth_headers):
-    big = _zip_bytes({"demo-main/pad.py": "x = 1\n" * 2_000_000})
-    assert len(big) > settings.ANALYSIS_MAX_ARCHIVE_SIZE_MB * 1024 * 1024
+async def test_oversized_body_is_refused(client, auth_headers):
+    big = "x" * (settings.ANALYSIS_MAX_REQUEST_BODY_BYTES + 1)
     response = await client.post(
-        f"/api/v1/projects/{project['id']}/analyses",
+        "/api/v1/projects/from-repo",
+        json={"repository": "octocat/demo", "description": big},
         headers=auth_headers,
-        files={"file": ("big.zip", big, "application/zip")},
     )
     assert response.status_code == 413
 
@@ -433,8 +357,8 @@ async def test_database_failures_are_reported_without_leaking_details(client, au
     assert "SELECT" not in response.text
 
 
-async def test_dashboard_summary_reports_the_full_severity_scale(client, auth_headers, project):
-    run = await _start_and_wait(client, auth_headers, project["id"])
+async def test_dashboard_summary_reports_the_full_severity_scale(client, auth_headers, repo_import):
+    _, run = await import_and_wait(client, auth_headers)
 
     response = await client.get("/api/v1/dashboard/summary", headers=auth_headers)
     assert response.status_code == 200

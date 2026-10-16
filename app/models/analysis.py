@@ -61,7 +61,7 @@ class AnalysisRun(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     status = Column(String(32), nullable=False, default="pending")
-    source_type = Column(String(16), nullable=False, default="zip")  # zip (uploaded) | github (imported)
+    source_type = Column(String(16), nullable=False, default="github")  # provenance of the snapshot
     # Human-readable origin of the snapshot (e.g. "octocat/hello-world@main").
     source_ref = Column(String(200), nullable=True)
     # sha256 over the extracted tree's files; identifies the analysed snapshot.

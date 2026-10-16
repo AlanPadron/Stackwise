@@ -38,12 +38,13 @@ Base path `/api/v1`. Full engine documentation: [ANALYSIS_ENGINE.md](ANALYSIS_EN
 
 ## 2. Project management
 
-- `POST /projects`: Create a project.
-  - Request: `{ "name": "My Project", "description": "...", "analysis_config": { ... } }` (config optional)
-  - Response: `201 Created` with Project object (including `analysis_config`).
-- `POST /projects/from-repo`: Create a project from a GitHub repository and analyze it.
+A project exists only with a GitHub repository behind it, so importing a repository is the one way to
+create one — there is no manual project creation.
+
+- `POST /projects/from-repo`: Create a project from a GitHub repository and start its first run.
   - Request: `{ "repository": "owner/name", "ref": "main", "name": "optional", "description": "optional", "analysis_config": { ... } }`
-  - Response: `201 Created` with `{ "project": {...}, "run": {...} }` (the run is `pending`).
+  - Response: `201 Created` with `{ "project": {...}, "run": {...} }` (the run is `pending` and
+    executes in the background).
   - `409` when no GitHub account is linked; `404` when the repository is not accessible; `422` when
     the repository/ref/config is malformed; `502` when GitHub fails, the archive exceeds
     `ANALYSIS_MAX_ARCHIVE_SIZE_MB`, or the configured GitHub base URL is refused.
@@ -53,17 +54,14 @@ Base path `/api/v1`. Full engine documentation: [ANALYSIS_ENGINE.md](ANALYSIS_EN
 
 ## 3. Analysis engine
 
-- `POST /projects/{id}/analyses`: Upload a ZIP and start a run.
-  - Request: Multipart Form Data — `file` (ZIP), optional `config` (JSON overrides for this run only).
-  - Response: `202 Accepted` with the AnalysisRun object (`status: "pending"`).
-  - Errors: `400` invalid, empty or malicious archive (path traversal, absolute path, symlink/FIFO
-    entry, archive bomb, too many files, too deep, unreadable); `413` archive over the size limit;
-    `422` invalid analysis configuration; `429` rate limit or too many in-flight runs; `403` foreign
-    project.
+A run is started by `POST /projects/from-repo`, the same call that creates its project; the routes
+below read runs and findings, they do not start anything.
+
 - `GET /projects/{id}/analyses`: Run history, newest first.
   - Query: `limit` (default 50, max 200), `offset`, `status`
     (`pending|running|completed|completed_with_errors|failed|cancelled`; the legacy `processing` is
-    accepted), `source_type` (`zip|github`).
+    accepted), `source_type` (`github`; the legacy `zip` value is still accepted as a filter, but every
+    run the app can create today is `github`).
   - Response: `200 OK` with an array of AnalysisRun objects and an `X-Total-Count` header.
 - `GET /analyses/{id}`: Status, summary, metrics and risk of one run. Also reaps runs abandoned by a
   dead worker (`failed`, `error_category: "stale_run"`).

@@ -1,4 +1,4 @@
-"""Archive intake: validation before extraction, and safe extraction."""
+"""Archive intake: the zipball is validated and extracted in one pass."""
 
 import stat
 import zipfile
@@ -12,7 +12,6 @@ from app.analysis.sources.archive import (
     ArchiveSourceProvider,
     extract_archive,
     hash_tree,
-    inspect_archive,
     repository_root,
 )
 from app.analysis.workspace import RunWorkspace
@@ -95,14 +94,16 @@ def test_hash_tree_is_stable_and_content_sensitive(temp_root):
 def test_path_traversal_entries_are_rejected(temp_root, name):
     archive = _zip(temp_root / "evil.zip", {name: "pwned\n", "ok.py": "x = 1\n"})
     with pytest.raises(InvalidSourceError):
-        inspect_archive(archive, resolve_config())
+        extract_archive(archive, temp_root / "out", resolve_config())
+
+    assert not (temp_root / "outside.py").exists()
 
 
 def test_absolute_and_control_character_names_are_rejected(temp_root):
     for name in ("/absolute.py", "bad\x01name.py"):
         archive = _zip(temp_root / f"evil_{abs(hash(name))}.zip", {name: "x"})
         with pytest.raises(InvalidSourceError):
-            inspect_archive(archive, resolve_config())
+            extract_archive(archive, temp_root / "out", resolve_config())
 
 
 def test_symlink_and_special_entries_are_rejected(temp_root):
@@ -113,7 +114,7 @@ def test_symlink_and_special_entries_are_rejected(temp_root):
 
     for archive in (symlink, fifo):
         with pytest.raises(InvalidSourceError):
-            inspect_archive(archive, resolve_config())
+            extract_archive(archive, temp_root / "out", resolve_config())
 
 
 def test_too_many_files_is_a_resource_limit(temp_root):
@@ -122,14 +123,14 @@ def test_too_many_files_is_a_resource_limit(temp_root):
     archive = _zip(temp_root / "many.zip", files)
 
     with pytest.raises(ResourceLimitError):
-        inspect_archive(archive, config)
+        extract_archive(archive, temp_root / "out", config)
 
 
 def test_oversized_file_is_a_resource_limit(temp_root):
     config = resolve_config()
     archive = _zip(temp_root / "big.zip", {"big.py": "x" * (config.max_file_bytes + 1)})
     with pytest.raises(ResourceLimitError):
-        inspect_archive(archive, config)
+        extract_archive(archive, temp_root / "out", config)
 
 
 def test_total_extracted_size_is_a_resource_limit(temp_root):
@@ -139,7 +140,7 @@ def test_total_extracted_size_is_a_resource_limit(temp_root):
         {f"m{index}.py": "x" * (400 * 1024) for index in range(4)},
     )
     with pytest.raises(ResourceLimitError):
-        inspect_archive(archive, config)
+        extract_archive(archive, temp_root / "out", config)
 
 
 def test_deeply_nested_paths_are_rejected(temp_root):
@@ -148,14 +149,14 @@ def test_deeply_nested_paths_are_rejected(temp_root):
     archive = _zip(temp_root / "deep.zip", {nested: "x = 1\n"})
 
     with pytest.raises(ResourceLimitError):
-        inspect_archive(archive, config)
+        extract_archive(archive, temp_root / "out", config)
 
 
 def test_archive_without_files_is_rejected(temp_root):
     empty = temp_root / "empty.zip"
     zipfile.ZipFile(empty, "w").close()
     with pytest.raises(InvalidSourceError):
-        inspect_archive(empty, resolve_config())
+        extract_archive(empty, temp_root / "out", resolve_config())
 
     only_directories = temp_root / "dirs.zip"
     with zipfile.ZipFile(only_directories, "w") as archive:
@@ -177,23 +178,14 @@ def test_non_zip_and_missing_archive_are_rejected(temp_root):
     not_a_zip = temp_root / "not_a_zip.zip"
     not_a_zip.write_bytes(b"just text")
     with pytest.raises(InvalidSourceError):
-        inspect_archive(not_a_zip, resolve_config())
+        extract_archive(not_a_zip, temp_root / "out", resolve_config())
 
     with pytest.raises(SourceAcquisitionError):
-        inspect_archive(temp_root / "missing.zip", resolve_config())
+        extract_archive(temp_root / "missing.zip", temp_root / "out", resolve_config())
 
 
 def test_archive_larger_than_the_limit_is_rejected(temp_root):
     archive = _zip(temp_root / "large.zip", {"a.py": "#" * (2 * 1024 * 1024)})
     tight = replace(resolve_config(), max_archive_bytes=1024)
     with pytest.raises(ResourceLimitError):
-        inspect_archive(archive, tight)
-
-
-def test_inspect_archive_does_not_write_anything(temp_root):
-    archive = _zip(temp_root / "clean.zip", {"repo-main/app.py": "x = 1\n"})
-    destination = temp_root / "untouched"
-
-    inspect_archive(archive, resolve_config())
-
-    assert not destination.exists()
+        extract_archive(archive, temp_root / "out", tight)

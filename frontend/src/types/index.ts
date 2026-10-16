@@ -35,7 +35,7 @@ export interface AnalysisRun {
     id: string;
     project_id: string;
     status: AnalysisStatus;
-    /** Where the archive came from: an uploaded ZIP or an imported repository. */
+    /** Provenance of the analysed snapshot: always a GitHub import now. */
     source_type: string;
     source_ref: string | null;
     source_hash: string | null;

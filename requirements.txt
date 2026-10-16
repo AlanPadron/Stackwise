@@ -1,6 +1,9 @@
 fastapi[all]
 uvicorn
-sqlalchemy>=2.0.0
+# `[asyncio]` is required, not cosmetic: it is what installs `greenlet`, without
+# which `sqlalchemy.ext.asyncio` refuses to import and neither the API nor
+# init_db.py/alembic can start (app/db/session.py is async-only).
+sqlalchemy[asyncio]>=2.0.0
 alembic
 psycopg2-binary
 pydantic-settings

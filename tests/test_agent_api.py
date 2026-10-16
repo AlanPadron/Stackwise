@@ -7,13 +7,10 @@ there is the *contract*: which findings reach the model and what the endpoint
 returns.
 """
 
-import asyncio
-import io
 import uuid
-import zipfile
 
 import pytest
-from engine_builders import demo_python_sources
+from api_helpers import import_and_wait
 
 from app.agent.backend import ChatMessage, UnavailableBackend
 from app.agent.qwen import missing_dependencies
@@ -62,26 +59,9 @@ def unavailable_backend():
     app.dependency_overrides.pop(agent_backend, None)
 
 
-async def _completed_run(client, headers, project_id) -> dict:
-    """A finished analysis with real analyzer output (ruff/bandit/radon)."""
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        for name, content in demo_python_sources().items():
-            archive.writestr(name, content)
-
-    response = await client.post(
-        f"/api/v1/projects/{project_id}/analyses",
-        headers=headers,
-        files={"file": ("demo.zip", buffer.getvalue(), "application/zip")},
-    )
-    assert response.status_code == 202, response.text
-    run_id = response.json()["id"]
-    for _ in range(40):
-        run = (await client.get(f"/api/v1/analyses/{run_id}", headers=headers)).json()
-        if run["status"] not in ("pending", "running", "processing"):
-            return run
-        await asyncio.sleep(0.05)
-    raise AssertionError("run never finished")
+async def _completed_run(client, headers, repository: str = "octocat/demo") -> tuple[dict, dict]:
+    """An imported project plus a finished run with real analyzer output."""
+    return await import_and_wait(client, headers, repository=repository)
 
 
 async def _second_user_headers(client) -> dict[str, str]:
@@ -201,9 +181,9 @@ async def test_chat_rejects_conversations_it_cannot_use(client, auth_headers, fa
 
 
 async def test_chat_answers_with_the_findings_of_the_latest_finished_run(
-    client, auth_headers, project, fake_backend
+    client, auth_headers, repo_import, fake_backend
 ):
-    run = await _completed_run(client, auth_headers, project["id"])
+    project, run = await _completed_run(client, auth_headers)
     total = run["summary"]["total_findings"]
     assert total > 0, "the demo sources must produce findings for this test to mean anything"
 
@@ -232,8 +212,8 @@ async def test_chat_answers_with_the_findings_of_the_latest_finished_run(
     assert quoted["tool"] in system
 
 
-async def test_chat_can_be_scoped_to_one_run(client, auth_headers, project, fake_backend):
-    run = await _completed_run(client, auth_headers, project["id"])
+async def test_chat_can_be_scoped_to_one_run(client, auth_headers, repo_import, fake_backend):
+    project, run = await _completed_run(client, auth_headers)
 
     body = (
         await client.post(

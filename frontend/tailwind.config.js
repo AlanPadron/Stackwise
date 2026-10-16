@@ -36,14 +36,21 @@ export default {
         'sw-in-sm': 'var(--sw-shadow-in-sm)',
         'sw-in': 'var(--sw-shadow-in)',
       },
+      /* Durations and easings are the same custom properties `index.css`
+         defines, not copies: a change to the token layer must not leave a
+         stale number behind in a utility. */
       transitionDuration: {
-        'sw-fast': '140ms',
-        sw: '220ms',
-        'sw-slow': '400ms',
+        'sw-fast': 'var(--sw-t-fast)',
+        'sw-hover': 'var(--sw-t-hover)',
+        sw: 'var(--sw-t)',
+        'sw-enter': 'var(--sw-t-enter)',
+        'sw-slow': 'var(--sw-t-slow)',
       },
       transitionTimingFunction: {
-        sw: 'cubic-bezier(0.32, 0.72, 0, 1)',
-        'sw-out': 'cubic-bezier(0.16, 1, 0.3, 1)',
+        sw: 'var(--sw-ease)',
+        'sw-out': 'var(--sw-ease-out)',
+        'sw-inout': 'var(--sw-ease-inout)',
+        'sw-spring': 'var(--sw-ease-spring)',
       },
       fontFamily: {
         display: ['Cinzel Decorative', 'IM Fell English', 'Georgia', 'serif'],

@@ -14,7 +14,6 @@ import { useI18n } from '../i18n/I18nContext';
 import { Robot, RobotState } from './Robot';
 import { Button, Loader, RobotIcon } from './ui';
 import { cx } from './ui/cx';
-import { EyeIcon, EyeOffIcon } from './ui/icons';
 
 /** A rendered turn; the meta line is client-side, so it is not sent back. */
 interface Turn {
@@ -35,9 +34,6 @@ interface Turn {
 type Phase = 'idle' | 'pending' | 'generating' | 'streaming';
 
 const PROJECT_ROUTE = '/projects/:id';
-
-/** The mascot preference, remembered per browser. */
-const MASCOT_KEY = 'stackwise_mascot';
 
 /** How long a one-shot pose is held before the robot goes back to work. */
 const SENT_MS = 280;
@@ -71,7 +67,6 @@ export const AgentChat: React.FC = () => {
     const [streamed, setStreamed] = useState('');
     const [mood, setMood] = useState<'sent' | 'success' | 'error' | null>(null);
     const [calm, setCalm] = useState(true);
-    const [mascot, setMascot] = useState(() => localStorage.getItem(MASCOT_KEY) !== 'off');
     const containerRef = useRef<HTMLDivElement>(null);
     const panel = useRef<HTMLDivElement | null>(null);
     const listRef = useRef<HTMLDivElement>(null);
@@ -289,13 +284,7 @@ export const AgentChat: React.FC = () => {
                     <header className="flex items-start gap-3 border-b border-[var(--sw-hairline)] px-4 py-3">
                         {/* The robot always sits here, so whatever it is doing is
                             visible while the answer is being written. */}
-                        {mascot ? (
-                            <Robot state={robotState} size={40} className="shrink-0 -my-1 -ml-1" />
-                        ) : (
-                            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-sw-sm bg-[var(--sw-accent-soft)] text-accent">
-                                <RobotIcon size={17} />
-                            </span>
-                        )}
+                        <Robot state={robotState} size={40} className="shrink-0 -my-1 -ml-1" />
                         <span className="min-w-0 flex-1">
                             <span className="block text-sm font-semibold text-ink">
                                 {t('agent.title')}
@@ -308,20 +297,6 @@ export const AgentChat: React.FC = () => {
                                       : t('agent.subtitle')}
                             </span>
                         </span>
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-pressed={mascot}
-                            onClick={() => {
-                                const next = !mascot;
-                                setMascot(next);
-                                localStorage.setItem(MASCOT_KEY, next ? 'on' : 'off');
-                            }}
-                            aria-label={mascot ? t('agent.mascotHide') : t('agent.mascotShow')}
-                            title={mascot ? t('agent.mascotHide') : t('agent.mascotShow')}
-                        >
-                            {mascot ? <EyeIcon size={16} /> : <EyeOffIcon size={16} />}
-                        </Button>
                         <Button
                             size="icon"
                             variant="ghost"
@@ -439,13 +414,13 @@ export const AgentChat: React.FC = () => {
             <button
                 type="button"
                 onClick={() => setOpen((value) => !value)}
-                className="sw-fab"
+                className="sw-fab sw-fab--accent"
                 aria-expanded={open}
                 aria-haspopup="dialog"
                 aria-label={t('agent.open')}
                 title={t('agent.open')}
             >
-                <RobotIcon size={20} />
+                <RobotIcon size={22} />
             </button>
         </div>
     );

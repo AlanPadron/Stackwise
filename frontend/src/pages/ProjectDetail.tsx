@@ -1,5 +1,5 @@
-// One project: ZIP upload, analysis history, and the findings of the selected run.
-import React, { useEffect, useRef, useState } from 'react';
+// One project: analysis history and the findings of the selected run.
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import apiClient from '../api/client';
 import { Project, AnalysisRun, Finding } from '../types';
@@ -9,7 +9,6 @@ import { cx } from '../components/ui/cx';
 import {
     AppShell,
     Badge,
-    Button,
     Card,
     Loader,
     Well,
@@ -23,9 +22,7 @@ const ProjectDetail: React.FC = () => {
     const [analyses, setAnalyses] = useState<AnalysisRun[]>([]);
     const [selectedRun, setSelectedRun] = useState<AnalysisRun | null>(null);
     const [findings, setFindings] = useState<Finding[]>([]);
-    const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(true);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const { t, locale } = useI18n();
 
     useEffect(() => {
@@ -45,29 +42,6 @@ const ProjectDetail: React.FC = () => {
         };
         loadData();
     }, [id]);
-
-    const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        const fileInput = (e.target as HTMLFormElement).elements.namedItem('file') as HTMLInputElement;
-        if (!fileInput?.files?.[0]) return;
-
-        setUploading(true);
-        const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-
-        try {
-            await apiClient.post(`/projects/${id}/analyses`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            // Refresh analyses list
-            const analRes = await apiClient.get(`/projects/${id}/analyses`);
-            setAnalyses(analRes.data);
-        } catch (err) {
-            alert(t('project.uploadFailed'));
-        } finally {
-            setUploading(false);
-        }
-    };
 
     const loadFindings = async (run: AnalysisRun) => {
         setSelectedRun(run);
@@ -91,23 +65,6 @@ const ProjectDetail: React.FC = () => {
                         {project.description || t('project.noDescription')}
                     </p>
                 </div>
-                <form onSubmit={handleUpload} className="flex flex-wrap items-center gap-3">
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        name="file"
-                        accept=".zip"
-                        className="hidden"
-                        tabIndex={-1}
-                        aria-hidden="true"
-                    />
-                    <Button onClick={() => fileInputRef.current?.click()}>
-                        {t('project.selectZip')}
-                    </Button>
-                    <Button type="submit" variant="primary" loading={uploading}>
-                        {t('project.runAnalysis')}
-                    </Button>
-                </form>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -137,11 +94,6 @@ const ProjectDetail: React.FC = () => {
                                     <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <Badge tone={statusTone(run.status)}>{run.status}</Badge>
-                                            <Badge tone={run.source_type === 'github' ? 'accent' : 'neutral'}>
-                                                {run.source_type === 'github'
-                                                    ? t('project.sourceGitHub')
-                                                    : t('project.sourceZip')}
-                                            </Badge>
                                         </div>
                                         <span className="text-xs text-faint">
                                             {new Date(run.created_at).toLocaleDateString(locale)}
