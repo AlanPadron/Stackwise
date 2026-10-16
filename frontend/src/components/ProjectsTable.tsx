@@ -22,7 +22,7 @@ export const ProjectsTable: React.FC<{
             <table
                 className="sw-table min-w-[32rem]
                     [&>thead>tr>th]:text-xs
-                    sm:[&>thead>tr>th]:text-[0.6875rem] sm:[&>thead>tr>th]:leading-normal"
+                    sm:[&>thead>tr>th]:text-micro sm:[&>thead>tr>th]:leading-normal"
             >
                 <caption className="sr-only">{t('nav.projects')}</caption>
                 <thead>

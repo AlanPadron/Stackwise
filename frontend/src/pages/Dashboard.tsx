@@ -95,7 +95,7 @@ const StatCard: React.FC<{
 }> = ({ label, value, valueClassName }) => (
     <Card className="p-6 sw-enter">
         {/* 11px is unreadable on a phone; `sm` keeps the previous optical size. */}
-        <p className="text-xs sm:text-[0.6875rem] sm:leading-normal font-bold uppercase tracking-[0.06em] text-faint">
+        <p className="text-xs sm:text-micro sm:leading-normal font-bold uppercase tracking-[0.06em] text-faint">
             {label}
         </p>
         <p className={`sw-num text-3xl font-bold mt-2 ${valueClassName ?? ''}`}>{value}</p>

@@ -27,9 +27,6 @@ const CATCH_UP = 6;
 export interface PacedText {
     /** The prefix to render. */
     text: string;
-    /** Everything pushed so far. A function, so a terminal branch reads the truth
-     * rather than whatever the last render happened to hold. */
-    shown(): string;
     push(chunk: string): void;
     /** Resolves when the pushed text is fully on screen. */
     flush(): Promise<void>;
@@ -106,5 +103,5 @@ export const usePacedText = (tickMs: number = TICK_MS): PacedText => {
         [settle, stop]
     );
 
-    return { text, shown: () => shown.current, push, flush, reset };
+    return { text, push, flush, reset };
 };

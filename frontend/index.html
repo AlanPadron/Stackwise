@@ -23,9 +23,8 @@
     <link rel="shortcut icon" href="/favicon.svg" />
     <!-- The home-screen icon must be a PNG: Safari does not use an SVG here. -->
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <!-- Colours the browser chrome to match each theme's canvas. -->
-    <meta name="theme-color" content="#eef1f6" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0b0f16" media="(prefers-color-scheme: dark)" />
+    <!-- Colours the browser chrome to match the active theme; ThemeContext keeps it in sync. -->
+    <meta name="theme-color" content="#eef1f6" />
     <meta
       name="description"
       content="Stackwise — code quality, security and complexity analysis for source repositories."
@@ -44,6 +43,7 @@
       try {
         if (localStorage.getItem('theme') === 'dark') {
           document.documentElement.classList.add('dark');
+          document.querySelector('meta[name="theme-color"]').content = '#0b0f16';
         }
       } catch (e) {}
     </script>

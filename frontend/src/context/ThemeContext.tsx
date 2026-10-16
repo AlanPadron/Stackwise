@@ -38,6 +38,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } else {
             root.classList.remove('dark');
         }
+        // The browser chrome follows the app theme, not the OS preference.
+        document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0b0f16' : '#eef1f6');
         localStorage.setItem('theme', theme);
     }, [theme]);
 

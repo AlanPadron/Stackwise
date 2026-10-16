@@ -9,7 +9,7 @@ import { cx } from './ui/cx';
  */
 export const VersionBadge: React.FC<{ className?: string }> = ({ className }) => (
     <p
-        className={cx('sw-mono select-none text-[0.6875rem] tracking-wide text-faint', className)}
+        className={cx('sw-mono select-none text-micro tracking-wide text-faint', className)}
         title={`Stackwise ${APP_VERSION}`}
     >
         {APP_VERSION}

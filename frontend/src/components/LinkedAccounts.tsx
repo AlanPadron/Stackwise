@@ -109,7 +109,7 @@ export const LinkedAccounts: React.FC = () => {
     return (
         <div>
             <hr className="sw-divider my-1" />
-            <p className="px-3 pb-2 pt-3 text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-[0.6875rem]">
+            <p className="px-3 pb-2 pt-3 text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-micro">
                 {t('settings.connections')}
             </p>
 

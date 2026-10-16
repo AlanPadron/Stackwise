@@ -55,6 +55,10 @@ export default {
       fontFamily: {
         display: ['Cinzel Decorative', 'IM Fell English', 'Georgia', 'serif'],
       },
+      fontSize: {
+        '2xs': 'var(--sw-text-2xs)',
+        micro: 'var(--sw-text-micro)',
+      },
     },
   },
   plugins: [],

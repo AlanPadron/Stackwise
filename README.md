@@ -332,14 +332,16 @@ the nap, because the one thing the server cannot tell it is that the user has st
 | State | When | What it shows |
 |---|---|---|
 | `idle` | nothing happening | slow breathing, a blink every ~5s, a slight head sway |
-| `attentive` | the composer has focus or text, and the user is not thinking about something else | taller eyes, head tilted toward the input, faster breath |
-| `thinking` | a request is out and no text has arrived | eyes looking away, three dots rising, the chest LEDs pulsing, the antenna lit |
+| `attentive` | the composer has focus or text, and the user is not thinking about something else | taller eyes tracking the line being typed, head tilted toward the input, a quicker, shallower breath |
+| `thinking` | a request is out and no text has arrived | eyes looking away, three dots rising, the chest LEDs pulsing, the head weighing it side to side, the antenna lit |
 | `typing` | there is an answer still being written | a small laptop slides out, arms alternate on the keyboard, a caret blinks on the code |
 | `success` | the answer completed | eyes close into a smile, one nod, an accent flash |
-| `error` | the request failed | eyes narrowed and tilted, one short shake, the antenna in the alert colour |
+| `error` | the request failed | eyes narrowed and drooped, one short shake, then the mood that stays: the body sags and the antenna flickers in the alert colour |
 | `user-sent` | the moment the message goes | a short nod, then straight into thinking |
-| `sleeping` | a minute with the panel open and no interaction at all | eyes closed, head down and tilted, the antenna drooped, LEDs out, three "z"s drifting up |
+| `sleeping` | a minute with the panel open and no interaction at all | eyes closed, head down and tilted, the antenna drooped, LEDs out, a deeper breath, three "z"s drifting up |
 | `wake` | any interaction while it was asleep | the head comes back up with a small overshoot and the eyes open wide |
+
+Every state owns its own `@keyframes` — none is a re-timed copy of another state's motion — so a state reads from *how* it moves and not only from how it looks, and the resting set (breathe, sway, blink) is the baseline each state overrides.
 
 The answer is *written*, not pasted: the server's fragments are appended to a growing prefix that a
 tick reveals at reading pace (`hooks/usePacedText.ts`), so a runtime that hands back a whole paragraph
@@ -893,6 +895,13 @@ application version moving; it is recorded on every run.
   open and no interaction at all (eyes closed, head down, antenna drooped, LEDs out, "z"s drifting
   up), and `wake`, the small overshoot that brings it back — armed by a single timer that every
   interaction re-arms, and skipped entirely while a request is in flight.
+- **Every state moves in its own way.** Each `data-state` owns its `@keyframes`: none is a re-timed
+  copy of another state's motion any more. `attentive` breathes quicker and its eyes track the line
+  being typed (with its own blink, so the taller eyes survive it), `thinking` weighs the problem side
+  to side while the LEDs pulse, `error` no longer freezes after its shake — the body sags, the eyes
+  droop and the antenna flickers for as long as the mood lasts — and `sleeping` breathes deeper and
+  slower than anything at rest. The resting set (breathe, sway, blink) is the baseline a state
+  overrides, and every pose still reads with motion off.
 
 ### 1.6.0-alpha
 

@@ -52,6 +52,10 @@
     --sw-text-muted: #5a6472;
     --sw-text-faint: #8b93a1;
 
+    /* --- type scale: the only sub-xs sizes in the system ------------ */
+    --sw-text-2xs: 0.625rem;
+    --sw-text-micro: 0.6875rem;
+
     /* --- accent + semantics ----------------------------------------- */
     --sw-accent: #c2410c;
     --sw-accent-hover: #9a3412;
@@ -801,7 +805,7 @@
     gap: 0.35rem;
     padding: 0.25rem 0.625rem;
     border-radius: var(--sw-radius-sm);
-    font-size: 0.6875rem;
+    font-size: var(--sw-text-micro);
     font-weight: 700;
     line-height: 1.4;
     letter-spacing: 0.04em;
@@ -854,7 +858,7 @@
   .sw-table thead th {
     padding: 0.9rem 1.5rem;
     text-align: left;
-    font-size: 0.6875rem;
+    font-size: var(--sw-text-micro);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -1023,16 +1027,21 @@
      ------------------------------------------------------------------
      One inline SVG animated entirely from `data-state` on its root, so React
      never re-renders a limb: a token arriving mid-answer changes text, not
-     this. Three rules shape everything below.
+     this. Four rules shape everything below.
 
        1. States differ in *pose*, not only in motion. Under
           `prefers-reduced-motion` every duration collapses to ~0, and the
           robot still has to show what it is doing — so the laptop, the
           worried eyes and the smile are static properties of the state.
-       2. Blink and look live on different elements (pupil scales, eye group
+       2. Every state owns its motion: no `@keyframes` below is used by two
+          states, so a state is recognisable by *how* it moves as well as by
+          how it looks. A new state gets its own keyframes rather than a
+          re-timed copy of someone else's, and the resting set (breathe,
+          sway, blink) is the baseline a state overrides.
+       3. Blink and look live on different elements (pupil scales, eye group
           translates) so the two can compose instead of overwriting each
           other.
-       3. The accent colour marks *activity* only — antenna, LEDs, caret,
+       4. The accent colour marks *activity* only — antenna, LEDs, caret,
           thoughts, the flash on success. At rest the robot is ink on
           surface like every other thing in the interface.
      ================================================================== */
@@ -1240,16 +1249,59 @@
     }
   }
 
+  /* Its own breath: quicker and shallower than resting, which is what makes
+     "leaning in" read before anything else moves. */
+  @keyframes sw-robot-ready {
+    0%,
+    100% {
+      transform: scaleY(1);
+    }
+    50% {
+      transform: scaleY(1.012);
+    }
+  }
+
+  /* The eyes follow the line being typed. It runs on the eye, not on the pupil,
+     so the shared blink keeps its own transform to itself. */
+  @keyframes sw-robot-watch {
+    0%,
+    100% {
+      transform: translateX(-0.7px);
+    }
+    50% {
+      transform: translateX(0.7px);
+    }
+  }
+
   .sw-robot[data-state='attentive'] .sw-robot__head {
     animation: sw-robot-tilt 3.2s var(--sw-ease-inout) infinite;
   }
 
+  .sw-robot[data-state='attentive'] .sw-robot__eye {
+    animation: sw-robot-watch 4.2s var(--sw-ease-inout) infinite;
+  }
+
+  /* Its own blink, so the taller eyes survive it: the shared one scales back to
+     its resting height, which would erase the attentive tell for a sixth of a
+     second every five. */
+  @keyframes sw-robot-blink-alert {
+    0%,
+    91%,
+    100% {
+      transform: scaleY(1.12);
+    }
+    94% {
+      transform: scaleY(0.09);
+    }
+  }
+
   .sw-robot[data-state='attentive'] .sw-robot__pupil {
     transform: scaleY(1.12);
+    animation: sw-robot-blink-alert 5.4s linear infinite;
   }
 
   .sw-robot[data-state='attentive'] .sw-robot__torso {
-    animation-duration: 3.2s;
+    animation: sw-robot-ready 2.6s var(--sw-ease-inout) infinite;
   }
 
   /* --- thinking: the request is out, nothing has come back ---------- */
@@ -1328,8 +1380,20 @@
     animation-delay: 400ms;
   }
 
+  /* Chewing it over: a slow weigh from side to side, not the resting sway
+     retimed. */
+  @keyframes sw-robot-ponder {
+    0%,
+    100% {
+      transform: rotate(-1.3deg) translateY(0.5px);
+    }
+    50% {
+      transform: rotate(1.3deg) translateY(-1.3px);
+    }
+  }
+
   .sw-robot[data-state='thinking'] .sw-robot__head {
-    animation-duration: 4.4s;
+    animation: sw-robot-ponder 4.4s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='thinking'] .sw-robot__antenna-tip {
@@ -1470,12 +1534,53 @@
     transform: rotate(-14deg) scaleY(0.78);
   }
 
-  .sw-robot[data-state='error'] .sw-robot__head {
-    animation: sw-robot-shake 0.42s var(--sw-ease-out) 1;
+  /* The shake is the impact; these three are the mood that stays — the head
+     freezes, so the body, the eyes and the antenna carry it. */
+  @keyframes sw-robot-deflate {
+    0%,
+    100% {
+      transform: scaleY(1) translateY(0);
+    }
+    50% {
+      transform: scaleY(0.988) translateY(0.5px);
+    }
+  }
+
+  @keyframes sw-robot-sag {
+    0%,
+    100% {
+      transform: translateY(0.3px);
+    }
+    50% {
+      transform: translateY(1.1px);
+    }
+  }
+
+  @keyframes sw-robot-alert {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  .sw-robot[data-state='error'] .sw-robot__torso {
+    animation: sw-robot-deflate 4.6s var(--sw-ease-inout) infinite;
+  }
+
+  .sw-robot[data-state='error'] .sw-robot__eye {
+    animation: sw-robot-sag 4.2s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='error'] .sw-robot__antenna-tip {
     fill: var(--sw-danger);
+    animation: sw-robot-alert 1.6s var(--sw-ease-inout) infinite;
+  }
+
+  .sw-robot[data-state='error'] .sw-robot__head {
+    animation: sw-robot-shake 0.42s var(--sw-ease-out) 1;
   }
 
   /* --- user-sent: a short nod --------------------------------------- */
@@ -1536,9 +1641,20 @@
     animation: sw-robot-doze 7.5s var(--sw-ease-inout) infinite;
   }
 
-  /* Same keyframes, roughly twice the period: the body rises and falls slower. */
+  /* Its own breath, and the slowest one there is: deeper and longer than resting,
+     which is what separates "asleep" from "standing still". */
+  @keyframes sw-robot-drowse {
+    0%,
+    100% {
+      transform: scaleY(1);
+    }
+    50% {
+      transform: scaleY(1.03);
+    }
+  }
+
   .sw-robot[data-state='sleeping'] .sw-robot__torso {
-    animation: sw-robot-breathe 7.5s var(--sw-ease-inout) infinite;
+    animation: sw-robot-drowse 9s var(--sw-ease-inout) infinite;
   }
 
   .sw-robot[data-state='sleeping'] .sw-robot__antenna {

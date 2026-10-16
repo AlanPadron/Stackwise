@@ -258,11 +258,10 @@ export const AgentChat: React.FC = () => {
         // A finished answer is waited for: the turn is committed once the text has
         // been written to the screen, so the bubble never jumps from a half-written
         // paragraph to the whole one. A cut or failed stream is not waited for —
-        // what the user watched appear is what stays in the transcript.
+        // stopping a generation should keep the answer, not the animation.
         if (outcome.kind === 'done') {
             await reveal.flush();
         }
-        const written = reveal.shown();
         reveal.reset();
         setPhase('idle');
 
@@ -287,11 +286,14 @@ export const AgentChat: React.FC = () => {
 
         if (outcome.kind === 'cancelled') {
             // Nothing failed, so nothing looks wrong: the partial answer stays
-            // where it got to and the robot goes back to resting.
+            // where it got to — everything the server had already sent, which is
+            // more than the screen had got round to revealing — and the robot goes
+            // back to resting.
+            const partial = outcome.partial || accumulated;
             setTurns([
                 ...history,
-                written
-                    ? { role: 'assistant', content: written, meta: t('agent.cancelled') }
+                partial
+                    ? { role: 'assistant', content: partial, meta: t('agent.cancelled') }
                     : { role: 'assistant', content: t('agent.cancelled') },
             ]);
             return;
@@ -301,8 +303,8 @@ export const AgentChat: React.FC = () => {
         // chat answers in the agent's voice instead.
         setTurns([
             ...history,
-            written
-                ? { role: 'assistant', content: written, meta: t('agent.error') }
+            accumulated
+                ? { role: 'assistant', content: accumulated, meta: t('agent.error') }
                 : { role: 'assistant', content: t('agent.error') },
         ]);
         setMood('error');
@@ -413,7 +415,7 @@ export const AgentChat: React.FC = () => {
                                     turn.role === 'user' ? 'items-end' : 'items-start'
                                 )}
                             >
-                                <span className="text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-[0.625rem]">
+                                <span className="text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-2xs">
                                     {turn.role === 'user' ? t('agent.you') : t('agent.name')}
                                 </span>
                                 <p
@@ -427,7 +429,7 @@ export const AgentChat: React.FC = () => {
                                     {turn.content}
                                 </p>
                                 {turn.meta && (
-                                    <span className="mt-1 text-xs text-faint sm:text-[0.6875rem]">
+                                    <span className="mt-1 text-xs text-faint sm:text-micro">
                                         {turn.meta}
                                     </span>
                                 )}
@@ -436,14 +438,14 @@ export const AgentChat: React.FC = () => {
 
                         {reveal.text !== '' && (
                             <div className="flex flex-col items-start">
-                                <span className="text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-[0.625rem]">
+                                <span className="text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-2xs">
                                     {t('agent.name')}
                                 </span>
                                 <p className="mt-1 max-w-[90%] whitespace-pre-wrap rounded-sw bg-[var(--sw-sunken)] px-3 py-2 text-sm text-ink">
                                     {reveal.text}
                                 </p>
                                 <span
-                                    className="mt-1 text-xs text-faint sm:text-[0.6875rem]"
+                                    className="mt-1 text-xs text-faint sm:text-micro"
                                     role="status"
                                 >
                                     {t('agent.generating')}

@@ -70,7 +70,7 @@ export const SettingsMenu: React.FC = () => {
                     tabIndex={-1}
                     className="sw-popover w-[min(20rem,calc(100vw-2rem))] p-2 sw-enter-pop sm:w-80"
                 >
-                    <p className="px-3 pb-2 pt-3 text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-[0.6875rem]">
+                    <p className="px-3 pb-2 pt-3 text-xs font-bold uppercase tracking-[0.08em] text-faint sm:text-micro">
                         {t('settings.title')}
                     </p>
 
