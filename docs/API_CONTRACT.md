@@ -1,8 +1,9 @@
 # API Contract - Stackwise V1
 
-## Base URL: `/api/v1`
+Base path `/api/v1`. Full engine documentation: [ANALYSIS_ENGINE.md](ANALYSIS_ENGINE.md).
 
-### 1. Authentication
+## 1. Authentication
+
 - `POST /auth/register`: Create a new account.
   - Request: `{ "email": "user@example.com", "password": "securepassword123" }`
   - Response: `201 Created` with User object.
@@ -13,26 +14,130 @@
   - Header: `Authorization: Bearer <token>`
   - Response: `200 OK` with User object.
 
-### 2. Project Management
+### OAuth sign-in (Google, GitHub)
+
+- `GET /auth/providers`: Which providers this server can offer.
+  - Response: `200 OK` with `{ "google": true, "github": false, "mock": false }`.
+- `GET /auth/oauth/{provider}/authorize`: Start the round-trip.
+  - Query: `next` (optional SPA path to land on).
+  - Header: `Authorization: Bearer <token>` *optional* — when present the provider account is
+    **linked** to the caller instead of signing in.
+  - Response: `200 OK` with `{ "authorization_url": "..." }`; `404` unknown provider, `503` not
+    configured on this server.
+- `GET /auth/oauth/{provider}/callback`: Provider redirect target (not called by the SPA).
+  - Query: `code`, `state` (signed).
+  - Response: `302` to `<FRONTEND_URL>/auth/callback#token=<jwt>&next=<path>`, or
+    `#error=state|provider|link|denied` when it fails.
+
+### GitHub repositories
+
+- `GET /github/repositories`: Repositories the caller's linked GitHub account can read.
+  - Response: `200 OK` with `{ "connected": true, "login": "octocat", "repositories": [ { "full_name": "octocat/hello-world", ... } ] }`
+  - `connected: false` (with an empty list) means no GitHub account is linked yet.
+  - `502` when GitHub rejects the stored token or the configured base URL fails the SSRF guard.
+
+## 2. Project management
+
 - `POST /projects`: Create a project.
-  - Request: `{ "name": "My Project", "description": "Analysis of my app" }`
-  - Response: `201 Created` with Project object.
-- `GET /projects`: List user's projects.
-  - Response: `200 OK` with list of Project objects.
-- `GET /projects/{id}`: Get project details.
-- `PATCH /projects/{id}`: Update name/description.
-- `DELETE /projects/{id}`: Remove project.
+  - Request: `{ "name": "My Project", "description": "...", "analysis_config": { ... } }` (config optional)
+  - Response: `201 Created` with Project object (including `analysis_config`).
+- `POST /projects/from-repo`: Create a project from a GitHub repository and analyze it.
+  - Request: `{ "repository": "owner/name", "ref": "main", "name": "optional", "description": "optional", "analysis_config": { ... } }`
+  - Response: `201 Created` with `{ "project": {...}, "run": {...} }` (the run is `pending`).
+  - `409` when no GitHub account is linked; `404` when the repository is not accessible; `422` when
+    the repository/ref/config is malformed; `502` when GitHub fails, the archive exceeds
+    `ANALYSIS_MAX_ARCHIVE_SIZE_MB`, or the configured GitHub base URL is refused.
+- `GET /projects`: List the caller's projects.
+- `GET /projects/{id}`, `PATCH /projects/{id}`, `DELETE /projects/{id}`: read / update / delete.
+  `PATCH` validates `analysis_config` against the platform ceiling (`422` if it would widen a limit).
 
-### 3. Analysis Pipeline
-- `POST /projects/{id}/analyses`: Upload ZIP for analysis.
-  - Request: Multipart Form Data `file` (ZIP).
-  - Response: `202 Accepted` with AnalysisRun object (status: `pending`).
-- `GET /analyses/{id}`: Poll analysis status.
-  - Response: `200 OK` with AnalysisRun object (status: `pending` | `processing` | `completed` | `failed`).
-- `GET /analyses/{id}/findings`: Get detailed results.
-  - Response: `200 OK` with list of Finding objects.
-- `GET /projects/{id}/analyses`: History of analyses for a project.
+## 3. Analysis engine
 
-### 4. Dashboard
-- `GET /dashboard/summary`: High-level stats.
-  - Response: `200 OK` with `{ "total_projects": 5, "total_analyses": 10, "completed_analyses": 8, "total_findings": 42, "findings_by_severity": { "high": 2, "medium": 10, "low": 30 }, "last_analysis_status": "completed" }`
+- `POST /projects/{id}/analyses`: Upload a ZIP and start a run.
+  - Request: Multipart Form Data — `file` (ZIP), optional `config` (JSON overrides for this run only).
+  - Response: `202 Accepted` with the AnalysisRun object (`status: "pending"`).
+  - Errors: `400` invalid, empty or malicious archive (path traversal, absolute path, symlink/FIFO
+    entry, archive bomb, too many files, too deep, unreadable); `413` archive over the size limit;
+    `422` invalid analysis configuration; `429` rate limit or too many in-flight runs; `403` foreign
+    project.
+- `GET /projects/{id}/analyses`: Run history, newest first.
+  - Query: `limit` (default 50, max 200), `offset`, `status`
+    (`pending|running|completed|completed_with_errors|failed|cancelled`; the legacy `processing` is
+    accepted), `source_type` (`zip|github`).
+  - Response: `200 OK` with an array of AnalysisRun objects and an `X-Total-Count` header.
+- `GET /analyses/{id}`: Status, summary, metrics and risk of one run. Also reaps runs abandoned by a
+  dead worker (`failed`, `error_category: "stale_run"`).
+  - Response: `200 OK` with the AnalysisRun object:
+    `{ id, project_id, status, source_type, source_ref, source_hash, engine_version, config_version,
+       config_hash, analysis_config, started_at, finished_at, duration_seconds, error_category,
+       error_message, summary, metrics, risk, tool_versions, created_at }`
+- `GET /analyses/{id}/findings`: Normalized findings of a run.
+  - Query: `limit` (default 50, max 200), `offset`, `severity`
+    (`critical|high|medium|low|info`), `category` (`security|bug|complexity|maintainability|style|
+    dead_code|performance|other`), `tool` (`ruff|bandit|radon`), `rule_id`, `file_path`
+    (repository-relative), `sort` (`severity|file|-created_at`).
+  - Response: `200 OK` with an array of Finding objects and an `X-Total-Count` header.
+- `GET /findings/{id}`: One finding by id (ownership checked: `403` for another user's project).
+  - Response: `200 OK` with
+    `{ id, analysis_run_id, project_id, tool, rule_id, category, severity, confidence, title,
+       message, file_path, line_start, line_end, column_start, column_end, fingerprint, references,
+       finding_metadata, created_at }`
+
+Severity, category, tool, status, sort and numeric page arguments are validated: an unsupported
+value is a `422`, never a silently empty page.
+
+## 4. Health
+
+- `GET /health`: unauthenticated liveness probe outside `/api/v1` —
+  `{ "status": "healthy", "version": "...", "engine_version": "..." }`. Answers even when the
+  database is down.
+- `GET /api/v1/health`: readiness — `{ "status": "ok"|"degraded", "version": "...",
+  "engine_version": "...", "database": "ok"|"unavailable" }`. Never returns a connection string,
+  driver error or stack trace.
+
+Both health responses, every error response and every finding are free of application secrets: the
+API redacts anything secret-shaped before it is stored or returned, and a database failure is a
+`503 {"detail": "The database is unavailable"}` with the driver's message kept in the log.
+
+## 5. Dashboard
+
+- `GET /dashboard/summary`: High-level counters.
+  - Response: `200 OK` with `{ "total_projects": 5, "total_analyses": 10, "completed_analyses": 8,
+    "total_findings": 42, "findings_by_severity": { "critical": 0, "high": 2, "medium": 10,
+    "low": 30, "info": 0 }, "last_analysis_status": "completed" }`
+  - `completed_analyses` counts both `completed` and `completed_with_errors` runs.
+
+## 6. Findings agent
+
+The chat that explains findings (see the analysis engine doc for how findings are produced). It is
+not a second source of truth: every answer is generated from the findings in scope, and the model
+that writes it is reported alongside the text.
+
+- `GET /agent/status`: Whether the chat can answer, and what it is configured to run.
+  - Response: `200 OK` with
+    `{ "available": true, "backend": "cloudflare", "model": "@cf/qwen/qwen2.5-coder-32b-instruct",
+       "reason": null, "max_context_findings": 60, "max_message_chars": 4000 }`
+  - `available: false` carries a `reason` naming the *setting* that is missing or the package that
+    is not installed — never a value, a path or a secret. `backend` is `qwen`, `cloudflare` or
+    `none` (`AGENT_BACKEND`).
+- `POST /agent/chat`: Answer the last turn with the findings in scope as context.
+  - Request:
+    `{ "messages": [ { "role": "user", "content": "..." } ], "project_id": "...", "analysis_run_id": "..." }`
+    — `project_id` and `analysis_run_id` are optional (both are ownership-checked; `403` for
+    another user's, `404` for an unknown one). Without them the agent has no findings to quote and
+    says so.
+  - Response: `200 OK` with
+    `{ "reply": "...", "backend": "cloudflare", "model": "...", "findings_used": 12,
+       "truncated": false, "analysis_run_id": "..." }`
+  - Errors: `422` for a conversation it cannot use (empty, no final `user` turn, blank content,
+    more than `AGENT_MAX_MESSAGES` turns, a message longer than `AGENT_MAX_MESSAGE_CHARS`);
+    `429` rate limit (`AGENT_RATE_LIMIT_PER_MINUTE` per user per worker process); `503` when the
+    configured backend cannot run, with the sanitised reason as `detail` — never an invented
+    explanation.
+
+## 7. Secrets
+
+Every response listed above is free of application secrets, and the same holds for the findings
+agent: `CLOUDFLARE_API_TOKEN` is read only by the API process, sent only in the `Authorization`
+header of the outbound Workers AI request, and scrubbed from any upstream error text before it can
+reach a response or a log.

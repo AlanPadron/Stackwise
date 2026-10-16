@@ -1,6 +1,8 @@
+"""User table. The email doubles as the JWT subject and the login username."""
+
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -10,8 +12,13 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, index=True, nullable=False)
+    # bcrypt hash, never the password. OAuth-only accounts store
+    # `security.UNUSABLE_PASSWORD` instead (see app/core/security.py).
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     projects = relationship("Project", back_populates="owner")
+    oauth_accounts = relationship(
+        "OAuthAccount", back_populates="user", cascade="all, delete-orphan"
+    )

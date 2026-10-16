@@ -1,5 +1,6 @@
 // Once-per-session transition screen: entry → hold → dissolve, all finite.
 import React, { useState, useEffect } from 'react';
+import { BrandMark, Wordmark } from './ui';
 
 /**
  * Full-screen transition splash. Two finite passes: the mark is extruded into
@@ -25,18 +26,16 @@ const Splash: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
 
     return (
         <div
-            className={`fixed inset-0 z-50 grid place-items-center bg-surface
-                transition-all duration-700 ease-neu
+            className={`fixed inset-0 z-50 grid place-items-center sw-ambient bg-[var(--sw-bg)]
+                transition-all duration-700 ease-sw
                 ${status === 'exit' ? 'opacity-0 blur-xl pointer-events-none' : 'opacity-100 blur-0'}`}
         >
             <div
-                className={`flex flex-col items-center gap-6 transition-all duration-700 ease-neu-out
+                className={`flex flex-col items-center gap-6 transition-all duration-700 ease-sw-out
                     ${status === 'entry' ? 'scale-90 opacity-0' : 'scale-100 opacity-100'}`}
             >
-                <span className="neu-mark h-24 w-24 rounded-neu-lg text-4xl">W</span>
-                <span className="text-sm font-semibold tracking-[0.3em] uppercase text-faint">
-                    Stackwise
-                </span>
+                <BrandMark size="xl" />
+                <Wordmark className="text-xl" />
             </div>
         </div>
     );

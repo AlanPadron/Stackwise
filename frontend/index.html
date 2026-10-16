@@ -2,8 +2,42 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve on
+         notched devices; without it the insets are always 0. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Stackwise</title>
+
+    <!-- Installable app (see public/manifest.webmanifest). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iOS ignores the manifest for these two, so they are stated separately.
+         "default" keeps the status bar readable in both themes (a translucent
+         bar would put dark text over the brand panel in light mode). -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Stackwise" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Window/tab icon: the brand W tile (SVG, sharp corners, no font needed). -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.svg" />
+    <!-- The home-screen icon must be a PNG: Safari does not use an SVG here. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- Colours the browser chrome to match each theme's canvas. -->
+    <meta name="theme-color" content="#eef1f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0f16" media="(prefers-color-scheme: dark)" />
+    <meta
+      name="description"
+      content="Stackwise — code quality, security and complexity analysis for source repositories."
+    />
+
+    <!-- "Cinzel Decorative": the ornamental, manuscript-style face behind the brand W. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&display=swap"
+      rel="stylesheet"
+    />
     <script>
       // Apply the stored theme before the first paint so dark mode never flashes
       // white. Mirrors the initial state in src/context/ThemeContext.tsx.

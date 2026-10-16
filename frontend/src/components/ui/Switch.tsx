@@ -36,9 +36,9 @@ export const Switch: React.FC<SwitchProps> = ({
             aria-label={label}
             title={title ?? label}
             onClick={() => onChange(!checked)}
-            className={cx('neu-switch', className)}
+            className={cx('sw-switch', className)}
         >
-            <span className="neu-switch__thumb" aria-hidden="true">
+            <span className="sw-switch__thumb" aria-hidden="true">
                 {checked ? thumbOn : thumbOff}
             </span>
         </button>

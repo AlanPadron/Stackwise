@@ -21,14 +21,14 @@ export const Loader: React.FC<LoaderProps> = ({
     <div
         className={cx(
             'flex flex-col items-center gap-4',
-            fullPage && 'min-h-screen justify-center neu-ambient',
+            fullPage && 'min-h-dvh justify-center sw-ambient',
             className
         )}
         role="status"
         aria-live="polite"
         {...rest}
     >
-        <span className="neu-loader" aria-hidden="true">
+        <span className="sw-loader" aria-hidden="true">
             <span />
             <span />
             <span />

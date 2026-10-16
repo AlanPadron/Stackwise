@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Stackwise">
+  <!--
+    Favicon = the brand tile: a near-square accent plate carrying the W.
+    The W is a stroked path, not text, so it never depends on a downloaded
+    font (Cinzel Decorative is not available to a favicon renderer) and its
+    miter joins / butt terminals keep the sharp, engineering look.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ea580c" />
+      <stop offset="1" stop-color="#9a3412" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="3" fill="url(#tile)" />
+  <rect x="0.5" y="0.5" width="63" height="63" rx="3" fill="none" stroke="#ffffff" stroke-opacity="0.2" />
+
+  <path
+    d="M14 18 L22.5 46 L32 26 L41.5 46 L50 18"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="6.5"
+    stroke-linecap="butt"
+    stroke-linejoin="miter"
+  />
+</svg>

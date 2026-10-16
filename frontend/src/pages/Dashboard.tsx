@@ -1,66 +1,88 @@
 // Overview screen: user-level counters plus the project table.
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import apiClient from '../api/client';
 import { DashboardSummary, Project } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { AppSidebar } from '../components/AppSidebar';
+import { ErrorState } from '../components/ErrorState';
 import { ProjectsTable } from '../components/ProjectsTable';
+import { useI18n } from '../i18n/I18nContext';
 import { AppShell, Badge, Button, Card, Loader } from '../components/ui';
 
 const Dashboard: React.FC = () => {
     const [summary, setSummary] = useState<DashboardSummary | null>(null);
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
+    const [failed, setFailed] = useState(false);
+    const { t } = useI18n();
     const navigate = useNavigate();
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [summaryRes, projectsRes] = await Promise.all([
-                    apiClient.get('/dashboard/summary'),
-                    apiClient.get('/projects'),
-                ]);
-                setSummary(summaryRes.data);
-                setProjects(projectsRes.data);
-            } catch (err) {
-                console.error('Failed to fetch dashboard data', err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const [summaryRes, projectsRes] = await Promise.all([
+                apiClient.get('/dashboard/summary'),
+                apiClient.get('/projects'),
+            ]);
+            setSummary(summaryRes.data);
+            setProjects(projectsRes.data);
+            setFailed(false);
+        } catch (err) {
+            // Zeros and an empty table would look like a real, empty account.
+            console.error('Failed to fetch dashboard data', err);
+            setFailed(true);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
+    useEffect(() => {
+        void load();
+    }, [load]);
+
     if (loading) {
-        return <Loader fullPage caption="Loading dashboard…" />;
+        return <Loader fullPage caption={t('dashboard.loading')} />;
+    }
+
+    if (failed) {
+        return (
+            <AppShell sidebar={<AppSidebar active="dashboard" />}>
+                <ErrorState message={t('dashboard.loadFailed')} onRetry={() => void load()} />
+            </AppShell>
+        );
     }
 
     return (
         <AppShell sidebar={<AppSidebar active="dashboard" />}>
-            <header className="flex flex-wrap items-center justify-between gap-4 mb-8 neu-enter">
+            <header className="flex flex-wrap items-center justify-between gap-4 mb-8 sw-enter">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Overview</h2>
-                    <p className="text-sm text-muted mt-1">Your analysis activity at a glance</p>
+                    <h2 className="text-2xl font-bold tracking-tight">{t('dashboard.title')}</h2>
+                    <p className="text-sm text-muted mt-1">{t('dashboard.subtitle')}</p>
                 </div>
-                <Button variant="primary" onClick={() => navigate('/projects/new')}>
-                    + New Project
-                </Button>
+                <div className="flex flex-wrap items-center gap-3">
+                    <Button onClick={() => navigate('/projects/import')}>
+                        {t('repos.title')}
+                    </Button>
+                    <Button variant="primary" onClick={() => navigate('/projects/new')}>
+                        {t('dashboard.newProject')}
+                    </Button>
+                </div>
             </header>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10 neu-stagger">
-                <StatCard label="Total Projects" value={summary?.total_projects || 0} />
-                <StatCard label="Analyses Run" value={summary?.total_analyses || 0} />
-                <StatCard label="Completed" value={summary?.completed_analyses || 0} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10 sw-stagger">
+                <StatCard label={t('dashboard.statProjects')} value={summary?.total_projects || 0} />
+                <StatCard label={t('dashboard.statAnalyses')} value={summary?.total_analyses || 0} />
+                <StatCard label={t('dashboard.statCompleted')} value={summary?.completed_analyses || 0} />
                 <StatCard
-                    label="Total Findings"
+                    label={t('dashboard.statFindings')}
                     value={summary?.total_findings || 0}
                     valueClassName={summary?.total_findings ? 'text-danger' : undefined}
                 />
             </div>
 
-            <Card className="overflow-hidden neu-enter">
+            <Card className="overflow-hidden sw-enter">
                 <div className="flex items-center justify-between gap-3 px-6 py-5">
-                    <h3 className="font-semibold">My Projects</h3>
+                    <h3 className="font-semibold">{t('dashboard.myProjects')}</h3>
                     <Badge>{projects.length}</Badge>
                 </div>
                 <ProjectsTable projects={projects} />
@@ -74,9 +96,12 @@ const StatCard: React.FC<{
     value: number;
     valueClassName?: string;
 }> = ({ label, value, valueClassName }) => (
-    <Card className="p-6 neu-enter">
-        <p className="text-[0.6875rem] font-bold uppercase tracking-[0.06em] text-faint">{label}</p>
-        <p className={`text-3xl font-bold mt-2 ${valueClassName ?? ''}`}>{value}</p>
+    <Card className="p-6 sw-enter">
+        {/* 11px is unreadable on a phone; `sm` keeps the previous optical size. */}
+        <p className="text-xs sm:text-[0.6875rem] sm:leading-normal font-bold uppercase tracking-[0.06em] text-faint">
+            {label}
+        </p>
+        <p className={`sw-num text-3xl font-bold mt-2 ${valueClassName ?? ''}`}>{value}</p>
     </Card>
 );
 

@@ -1,0 +1,12 @@
+# Optional: the findings agent (app/agent/). Not part of requirements.txt on
+# purpose — torch plus a checkpoint is a ~2 GB download for a feature that is off
+# until somebody turns it on, and a serverless bundle can never carry it.
+#
+#   pip install -r requirements-agent.txt
+#
+# Then set AGENT_BACKEND=qwen (the default) and restart the API. Weights come
+# from the Hugging Face hub unless AGENT_MODEL_PATH points at a local copy of
+# Qwen/Qwen2.5-0.5B-Instruct. `GET /api/v1/agent/status` reports whether the
+# runtime is usable, and why not when it is not.
+torch>=2.4
+transformers>=4.56

@@ -1,0 +1,500 @@
+{
+  "project": "StackWise Main",
+  "report_version": "1.0",
+  "last_updated": "2026-10-16T12:15:00Z",
+  "overall_status": "completed_with_manual_steps_pending",
+  "current_phase": "verification",
+  "summary": "Auditoria, correccion, integracion y verificacion de la copia local de StackWise Main. El stack real es un backend FastAPI async (SQLAlchemy 2 + Alembic) sobre SQLite por defecto con PostgreSQL/Supabase previsto, un motor de analisis propio (ruff/bandit/radon en subproceso) y un agente de hallazgos detras de una interfaz AgentBackend; el frontend es React 18 + Vite + Tailwind con sistema de tokens propio, i18n EN/ES y ahora PWA instalable y layout movil. Linea base antes de tocar nada: 229 tests en verde; despues: 260 en verde (31 nuevos). Cambios principales: (1) Cloudflare Workers AI integrado como segundo runtime del agente con el modelo de referencia @cf/qwen/qwen2.5-coder-32b-instruct, verificado contra la API real hasta la autenticacion; (2) asyncpg declarado y PRAGMA foreign_keys=ON en SQLite, que corrige filas huerfanas en rollbacks; (3) frontend adaptado a movil (sidebar -> drawer, objetivos tactiles de 44px, safe areas, tablas con scroll interno) y convertido en PWA instalable (manifiesto, iconos, service worker que nunca cachea /api/, aviso de actualizacion y aviso de sin conexion); (4) estados de error honestos en dashboard/proyectos y en la comprobacion de sesion, que antes se tragaban los fallos y mostraban datos vacios o cerraban la sesion; (5) README reescrito como guia real del proyecto, .env.example y docs secundarios actualizados, y este informe. Verificado en navegador real (Chromium headless) el build de produccion: manifiesto e iconos servidos, service worker activado, shell cargada sin conexion, /api nunca cacheada, banner de actualizacion tras simular un despliegue, drawer con foco atrapado, y 320/768/1440 sin desbordamiento horizontal. No se ha hecho git push ni ningun despliegue.",
+  "completed_work": [
+    "Auditoria completa (estructura, backend, frontend, contratos, seguridad, tests, estado PWA/movil) con dos exploraciones read-only en paralelo y linea base de tests (229 passed).",
+    "Cloudflare Workers AI integrado en el backend del agente como tercera implementacion del seam AgentBackend, con 29 tests nuevos.",
+    "Ruta Postgres/Supabase desbloqueada (asyncpg) y corregida la semantica de borrado en SQLite (PRAGMA foreign_keys) con 2 tests de regresion.",
+    "Movil: drawer de navegacion, capa CSS de pantallas pequenas (objetivos tactiles, campos de 16px, areas seguras), dvh en lugar de vh y scroll horizontal dentro de las tarjetas.",
+    "PWA: vite-plugin-pwa, manifiesto real, juego de iconos generado, service worker con precache del shell y NetworkOnly para /api, metadatos iOS/iPadOS, banner de sin conexion y actualizacion con confirmacion del usuario.",
+    "Accesibilidad: hook compartido de trampa de foco para los tres dialogos, enlace de salto al contenido, tabla con scope/caption, selector de ZIP alcanzable por teclado, tarjetas de historial convertidas en botones reales y role=alert en los errores asincronos.",
+    "Robustez: estados de error con reintento en dashboard, proyectos y comprobacion de sesion (antes un corte del backend cerraba la sesion y borraba el token).",
+    "Documentacion: README reescrito (puesta en marcha, PWA, despliegue manual con Supabase, notas de seguridad), .env.example y contrato de API actualizados, documento del motor actualizado, y este informe.",
+    "Verificacion: suite completa, build de produccion type-checked, smoke test del API por HTTP real end-to-end, y comprobaciones en navegador a 320/768/1440 con service worker."
+  ],
+  "changes": [
+    {
+      "file": "app/agent/cloudflare.py",
+      "change_type": "created",
+      "description": "Implementacion del seam AgentBackend sobre la API REST de Cloudflare Workers AI: POST /accounts/{account}/ai/run/{model}, Bearer token, cuerpo {messages, max_tokens, temperature}, lectura de result.response y traduccion de todos los fallos a motivos saneados.",
+      "reason": "El prompt pide integrar Cloudflare Workers AI con @cf/qwen/qwen2.5-coder-32b-instruct como modelo de referencia.",
+      "impact": "Segundo runtime del agente: sin instalar torch ni descargar pesos, apto para contenedores pequenos o serverless. No cambia el comportamiento por defecto (AGENT_BACKEND=qwen).",
+      "verification": "29 tests (tests/test_agent_cloudflare.py) con un servidor HTTP real en loopback; ademas una peticion real contra api.cloudflare.com desde la API en ejecucion devolvio 503 con el motivo saneado y sin filtrar el token."
+    },
+    {
+      "file": "app/agent/registry.py",
+      "change_type": "modified",
+      "description": "KNOWN_BACKENDS pasa a (qwen, cloudflare, none) y resolve_backend() construye CloudflareBackend desde los settings.",
+      "reason": "Es el punto unico que mapea configuracion a implementacion; ninguna otra capa cambia.",
+      "impact": "AGENT_BACKEND=cloudflare activa el runtime hosted; un nombre desconocido sigue degradando a UnavailableBackend.",
+      "verification": "tests de registry y de /agent/status; verificado tambien con la API arrancada en modo cloudflare."
+    },
+    {
+      "file": "app/core/config.py",
+      "change_type": "modified",
+      "description": "Nuevos CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN y CLOUDFLARE_MODEL_ID; documentados los tres valores de AGENT_BACKEND. APP_VERSION pasa a 1.5.0-alpha.",
+      "reason": "El token y el account id deben ser secretos de backend leidos del entorno; la version se sincroniza con package.json y src/config.ts como documenta el propio proyecto.",
+      "impact": "Configuracion nueva opcional; sin ella el backend hosted se reporta como no configurado en lugar de fallar por peticion.",
+      "verification": "tests parametrizados sobre settings ausentes; /agent/status comprobado por HTTP en ambos modos."
+    },
+    {
+      "file": "app/api/v1/agent.py",
+      "change_type": "modified",
+      "description": "La descripcion del 503 pasa a 'el backend configurado no puede ejecutarse (ver GET /agent/status)'; se anade la seccion del agente al contrato de API.",
+      "reason": "El motivo ya no es solo la ausencia del modelo local.",
+      "impact": "Solo documentacion OpenAPI; sin cambio funcional.",
+      "verification": "Suite en verde (el test del 503 sigue pasando)."
+    },
+    {
+      "file": "app/agent/__init__.py",
+      "change_type": "modified",
+      "description": "Docstring del paquete con cloudflare.py en el layout.",
+      "reason": "Coherencia de la documentacion interna.",
+      "impact": "Ninguno funcional.",
+      "verification": "Lectura."
+    },
+    {
+      "file": "app/db/session.py",
+      "change_type": "modified",
+      "description": "Listener de conexion que ejecuta PRAGMA foreign_keys=ON en SQLite.",
+      "reason": "SQLite no aplica ON DELETE CASCADE por defecto, asi que el DELETE core de POST /projects/from-repo (app/api/v1/projects.py:119) dejaba analysis_runs y findings huerfanos; Postgres si cascadeaba y los dos motores divergian.",
+      "impact": "Integridad de datos: SQLite y Postgres se comportan igual al borrar un proyecto.",
+      "verification": "tests/test_db_cascade.py (2 casos) y un script que reproduce el rollback midiendo 0 filas huerfanas."
+    },
+    {
+      "file": "requirements.txt",
+      "change_type": "modified",
+      "description": "Anadido asyncpg>=0.30,<1.0; passlib[bcrypt] sustituido por bcrypt>=4.0,<6.0 con comentario explicando por que.",
+      "reason": "Sin asyncpg, SQLALCHEMY_URL=postgresql+asyncpg:// (la ruta Supabase que documenta .env.example) falla al crear el engine; passlib no se importa en ningun modulo y su backend rompe con bcrypt>=5.",
+      "impact": "La ruta Postgres/Supabase queda instalable desde requirements; una dependencia muerta menos.",
+      "verification": "pip install --dry-run -r requirements.txt resuelve sin instalar nada nuevo; suite en verde."
+    },
+    {
+      "file": ".env.example",
+      "change_type": "modified",
+      "description": "Bloque del agente reescrito con los tres runtimes y bloque nuevo de Cloudflare Workers AI (cuenta, token, modelo) con valores vacios y comentarios.",
+      "reason": "Es la referencia de variables del proyecto y debe reflejar la configuracion real, sin valores secretos.",
+      "impact": "Ninguno en ejecucion; ningun valor real incluido.",
+      "verification": "Comparado linea a linea con app/core/config.py."
+    },
+    {
+      "file": "frontend/vite.config.ts",
+      "change_type": "modified",
+      "description": "VitePWA con registerType 'prompt', injectRegister false, manifest false (el manifiesto es un archivo real), precache del shell, navigateFallback /index.html con deny de /api/, runtime caching de las dos fuentes de Google y NetworkOnly para /api/. Se anade el proxy tambien a `preview`.",
+      "reason": "Fase PWA del encargo; el proxy de preview es lo que hace que el comando documentado `npm run preview` sirva la PWA localmente contra un API local.",
+      "impact": "El build de produccion genera dist/sw.js; el modo dev no registra worker (evita bundles obsoletos).",
+      "verification": "Build real: dist/sw.js con NavigationRoute deny /^\\/api\\// y ruta NetworkOnly para pathname /api/; comprobado en navegador."
+    },
+    {
+      "file": "frontend/public/manifest.webmanifest",
+      "change_type": "created",
+      "description": "Manifiesto real: id, name, short_name, description, lang, start_url, scope, display standalone, orientation, theme_color y background_color #eef1f6, categories e iconos 192/512 (any, any maskable) mas la fuente SVG maskable.",
+      "reason": "Requisito explicito del encargo; se prefirio un archivo estatico inspeccionable a un manifiesto generado.",
+      "impact": "La app es instalable en Android y en iOS via 'Anadir a pantalla de inicio'.",
+      "verification": "Servido con HTTP 200 desde el build de produccion y leido desde el navegador (nombre, start_url, display, tema e iconos correctos)."
+    },
+    {
+      "file": "frontend/public/icon-192.png, frontend/public/icon-512.png, frontend/public/icon-maskable.svg, frontend/public/apple-touch-icon.png",
+      "change_type": "created",
+      "description": "Juego de iconos generado con rsvg-convert a partir de la marca W existente: 192x192 (tile con esquinas), 512x512 maskable (sangrado completo, W al 60% para la zona segura), SVG fuente del maskable y apple-touch-icon de 180x180 opaco.",
+      "reason": "iOS no acepta SVG en apple-touch-icon y Android necesita iconos maskable; el favicon SVG existente se conserva para la pestana.",
+      "impact": "Instalacion con icono correcto en la pantalla de inicio de Android y de iOS.",
+      "verification": "Los cuatro archivos se sirven con 200 desde el build; el canal alfa comprobado con ImageMagick (apple-touch-icon opaco)."
+    },
+    {
+      "file": "frontend/index.html",
+      "change_type": "modified",
+      "description": "viewport-fit=cover; enlace al manifiesto; metadatos iOS (apple-mobile-web-app-capable, -status-bar-style default, -title), mobile-web-app-capable, format-detection; apple-touch-icon pasa a PNG 180; se retira el mask-icon que apuntaba a un SVG en color (Safari lo habria pintado como silueta negra).",
+      "reason": "Sin viewport-fit=cover los env(safe-area-inset-*) valen 0 y no hay experiencia de app instalada.",
+      "impact": "La app instalada ocupa la pantalla completa y respeta el notch.",
+      "verification": "Comprobado en el HTML servido del build (meta y viewport presentes) y en el navegador (hasAppleMeta, viewportMeta, isSecureContext)."
+    },
+    {
+      "file": "frontend/src/components/PwaStatus.tsx",
+      "change_type": "created",
+      "description": "Banner unico en la parte superior para los dos estados del PWA: sin conexion (mensaje honesto de que los analisis, hallazgos y chat necesitan el backend, mas boton de reintento) y actualizacion esperando (Recargar / Ahora no).",
+      "reason": "El encargo exige mensajes claros sin conexion y que las actualizaciones del service worker no destruyan datos; se omite a proposito cualquier aviso de 'listo para usar sin conexion' porque analizar sin backend no es posible.",
+      "impact": "El usuario entiende que pasa y decide cuando recargar.",
+      "verification": "Verificado en navegador: banner de sin conexion visible con la emulacion offline y banner de version nueva al simular un despliegue (waiting worker + Reload + reloj de estado)."
+    },
+    {
+      "file": "frontend/src/components/ui/AppShell.tsx",
+      "change_type": "modified",
+      "description": "El marco pasa a mobile-first: barra superior con boton de menu por debajo de md, sidebar fijo de 256px a partir de md, y drawer con role=dialog aria-modal, fondo no focalizable, boton de cerrar flotante sobre la marca, cierre por navegacion, Escape y fondo, trampa de foco y devolucion del foco al boton. Se anade el enlace 'Saltar al contenido'. min-h-dvh y areas seguras en las tres zonas.",
+      "reason": "Es el bloqueador movil principal: el sidebar de 256px dejaba ~100px de contenido en un movil de 360px.",
+      "impact": "La navegacion cabe en cualquier ancho y sigue siendo la misma en escritorio.",
+      "verification": "Medido en navegador: 320px -> drawer (barra visible, sidebar oculto), 768px y 1440px -> sidebar de 256px; ciclo de Tab dentro del drawer (sin paradas fuera), Escape cierra y devuelve el foco al boton de menu, sin desbordamiento horizontal."
+    },
+    {
+      "file": "frontend/src/hooks/useFocusTrap.ts",
+      "change_type": "created",
+      "description": "Hook compartido: mantiene Tab dentro del contenedor abierto, cierra con Escape, enfoca [data-autofocus] si existe y devuelve el foco al elemento que lo tenia.",
+      "reason": "Los tres dialogos (drawer, ajustes, chat) tenian los mismos dos huecos: no atrapaban el foco y lo dejaban en <body> al cerrarse.",
+      "impact": "Comportamiento de teclado correcto en los tres.",
+      "verification": "Verificado en navegador en el drawer (ciclo completo) y en los dos paneles flotantes (foco dentro, Escape cierra, foco devuelto al FAB)."
+    },
+    {
+      "file": "frontend/src/index.css",
+      "change_type": "modified",
+      "description": "Capa nueva para pantallas pequenas (max-width 767px): altura minima de 2.75rem en .sw-btn y .sw-btn--sm, .sw-nav-item, .sw-seg__btn; area tactil invisible para .sw-switch; 1rem de tipografia en .sw-input (evita el zoom de iOS al enfocar); badge y hint algo mayores; menos padding en la tabla; popover con max-height en dvh y scroll. Se anaden utilidades .sw-safe-top/-bottom/-x.",
+      "reason": "Los controles estaban por debajo del objetivo tactil de 44px y los campos a 15px; los badges a 11px.",
+      "impact": "Uso comodo con dedo sin cambiar nada por encima de 768px.",
+      "verification": "Medido en navegador a 320px: .sw-btn--sm 44px, .sw-btn 44px, .sw-fab 48x48, boton de menu 44x44, input a 16px, boton de envio 222x46."
+    },
+    {
+      "file": "frontend/src/context/AuthContext.tsx",
+      "change_type": "modified",
+      "description": "La comprobacion de sesion solo descarta el token ante 401/403; cualquier otro fallo (sin conexion, 5xx, API reiniciandose) marca sessionUnreachable y conserva la sesion. Se expone retrySession().",
+      "reason": "Antes cualquier fallo de /auth/me borraba el token: un corte del backend cerraba la sesion de todos los usuarios.",
+      "impact": "Un incidente del API ya no obliga a volver a iniciar sesion.",
+      "verification": "Verificado en navegador con el API caido: mensaje honesto + Reintentar, y el token sigue en localStorage; al volver el API, Reintentar entra sin credenciales."
+    },
+    {
+      "file": "frontend/src/App.tsx",
+      "change_type": "modified",
+      "description": "Monta PwaStatus y hace que ProtectedRoute muestre el estado de sesion inalcanzable con reintento en lugar de redirigir al formulario.",
+      "reason": "Un fallo de red no es un usuario sin sesion.",
+      "impact": "Sin expulsiones espurias al login.",
+      "verification": "Comprobado en navegador (ver AuthContext)."
+    },
+    {
+      "file": "frontend/src/components/ErrorState.tsx",
+      "change_type": "created",
+      "description": "Bloque de error reutilizable con role=alert, mensaje y boton de reintento.",
+      "reason": "Dashboard y proyectos registraban el fallo y pintaban el estado vacio, lo que se lee como 'no tienes proyectos': una afirmacion sobre los datos del usuario que la app no puede hacer.",
+      "impact": "Los fallos de carga se comunican y se pueden reintentar.",
+      "verification": "Verificado en navegador abortando GET /api/v1/projects: mensaje + Reintentar, sin mensaje de lista vacia, y al pulsar Reintentar aparecen los datos."
+    },
+    {
+      "file": "frontend/src/pages/Dashboard.tsx, frontend/src/pages/Projects.tsx",
+      "change_type": "modified",
+      "description": "La carga pasa a una funcion reutilizable con estado de fallo; si falla se muestra ErrorState con reintento (envuelto en AppShell para conservar la navegacion).",
+      "reason": "Estados de error ausentes detectados en la auditoria (punto 7 del encargo).",
+      "impact": "Ningun fallo silencioso.",
+      "verification": "Verificado en navegador (celda de prueba con peticion abortada y recuperacion con Reintentar)."
+    },
+    {
+      "file": "frontend/src/components/ProjectsTable.tsx",
+      "change_type": "modified",
+      "description": "La tabla se envuelve en un contenedor con scroll horizontal y ancho minimo de 32rem; encabezados con scope=col y caption accesible; celda de nombre con truncado y title; fecha sin saltos; estado vacio alineado a la izquierda en movil.",
+      "reason": "La tabla se recortaba dentro de la tarjeta en pantallas pequenas en vez de poder desplazarse.",
+      "impact": "Todas las columnas siguen siendo alcanzables en un movil.",
+      "verification": "Medido: contenedor clientWidth 340 / scrollWidth 512 con overflow-x auto, y el boton 'View Details' pasa a ser visible al desplazar (right 513 -> 341); sin scroll a nivel de pagina."
+    },
+    {
+      "file": "frontend/src/pages/ProjectDetail.tsx",
+      "change_type": "modified",
+      "description": "El selector de ZIP pasa a ser un boton real que dispara un input oculto (antes era un input display:none detras de un label, inalcanzable con teclado); las tarjetas del historial pasan a ser botones reales con aria-pressed; alturas dependientes del viewport (min-h 12rem / max-h 70dvh); scroll horizontal en la lista de hallazgos; filas con envoltura; min-w-0 en las columnas de la rejilla.",
+      "reason": "Defectos de accesibilidad y de layout movil detectados en la auditoria.",
+      "impact": "Se puede elegir un ZIP y seleccionar una ejecucion solo con teclado; nada desborda a 320px.",
+      "verification": "Type-check y build en verde; comprobado en el navegador a 320px (sin desbordamiento) y por lectura del DOM (boton + aria-pressed)."
+    },
+    {
+      "file": "frontend/src/components/ui/Card.tsx",
+      "change_type": "modified",
+      "description": "Card vuelve a ser solo una superficie: se retiran las props interactive/active, que existian unicamente para la tarjeta clicable del historial.",
+      "reason": "Evitar que vuelva a aparecer un div con onClick, que ningun teclado puede activar.",
+      "impact": "Una sola forma de hacer algo clicable: un boton.",
+      "verification": "Unico uso (ProjectDetail) migrado a <button> con las mismas clases; tsc y build en verde."
+    },
+    {
+      "file": "frontend/src/components/AgentChat.tsx, frontend/src/components/SettingsMenu.tsx",
+      "change_type": "modified",
+      "description": "Ambos paneles usan la trampa de foco compartida (aria-modal, tabIndex, cierre con Escape y devolucion del foco), se retiran los manejadores de Escape duplicados, el textarea del chat recibe el foco via data-autofocus, las alturas pasan a dvh, los FAB y paneles respetan las areas seguras y suben los textos de 10-11px a 12px en movil.",
+      "reason": "Diagnosticos de accesibilidad y de teclado virtual de la auditoria.",
+      "impact": "Paneles usables con teclado y sin quedar tapados por el teclado o el notch.",
+      "verification": "Medido a 320px: panel del chat 272x396 completamente dentro del viewport con foco en el textarea; panel de ajustes 288x236 con borde izquierdo en 8px; Escape cierra ambos."
+    },
+    {
+      "file": "frontend/src/pages/Login.tsx, frontend/src/pages/Register.tsx, frontend/src/pages/AuthCallback.tsx, frontend/src/components/OAuthButtons.tsx",
+      "change_type": "modified",
+      "description": "Campos de email con type/inputMode/autoComplete/autoCapitalize/spellCheck correctos, autocompletado de contrasena, textos de error con envoltura y role=alert, botones de proveedor y enlaces de accion con altura tactil, boton de envio a ancho completo en movil.",
+      "reason": "Autofill y ergonomia movil del formulario de acceso.",
+      "impact": "El navegador reconoce email y contrasena; nada desborda a 320px.",
+      "verification": "Medido a 320px en /login: input a 16px, 222px de ancho, type=email con inputMode/autoComplete/autoCapitalize=email/none y spellcheck=false, boton 222x46, sin desbordamiento."
+    },
+    {
+      "file": "frontend/src/pages/NewProject.tsx, frontend/src/pages/ImportRepo.tsx",
+      "change_type": "modified",
+      "description": "Tarjeta y fila de acciones adaptadas a movil (botones apilados y a ancho completo por debajo de sm), altura de la lista de repositorios dependiente del viewport.",
+      "reason": "Alturas y filas rigidas detectadas en la auditoria.",
+      "impact": "Formularios comodos en pantalla pequena, identicos a partir de 640px.",
+      "verification": "Type-check y build en verde."
+    },
+    {
+      "file": "frontend/src/components/AuthLayout.tsx, frontend/src/components/ui/Loader.tsx",
+      "change_type": "modified",
+      "description": "min-h-dvh en lugar de min-h-screen, areas seguras en el panel de marca y en el pie, tipografia del logotipo escalonada y tarjeta con padding progresivo.",
+      "reason": "100vh en movil deja contenido bajo la barra del navegador.",
+      "impact": "Nada queda fuera de pantalla en pantallas con notch.",
+      "verification": "Build en verde y comprobacion de layout a 320/768/1440."
+    },
+    {
+      "file": "frontend/src/components/ui/icons.tsx",
+      "change_type": "modified",
+      "description": "Iconos MenuIcon y CloseIcon siguiendo el mismo trazo y wrapper que el resto del set.",
+      "reason": "El drawer necesita boton de apertura y cierre.",
+      "impact": "Sin dependencias nuevas de iconos.",
+      "verification": "tsc y build en verde; visibles en el build (boton de menu y boton de cierre)."
+    },
+    {
+      "file": "frontend/src/i18n/dictionary.ts",
+      "change_type": "modified",
+      "description": "Claves nuevas en EN y ES: nav.open, nav.close, a11y.skipToContent, pwa.offline, pwa.updateReady, pwa.update, pwa.later, common.retry, projects.loadFailed, dashboard.loadFailed, auth.sessionUnreachable.",
+      "reason": "Todo texto nuevo pasa por el diccionario tipado: una clave sin traducir rompe el build.",
+      "impact": "Interfaz bilingue completa para lo anadido.",
+      "verification": "tsc en verde (el tipo TranslationKey obliga a completar ES)."
+    },
+    {
+      "file": "frontend/src/config.ts, frontend/package.json, frontend/package-lock.json",
+      "change_type": "modified",
+      "description": "Version 1.5.0-alpha en los tres puntos sincronizados; vite-plugin-pwa 1.3.0 anadido como dependencia de desarrollo.",
+      "reason": "El proyecto documenta que la version vive en APP_VERSION, package.json y config.ts y se sube junta; la PWA necesita el plugin (evaluado y elegido por ser el recomendado para Vite).",
+      "impact": "Badge, metadatos del API y paquete coherentes; PWA construible.",
+      "verification": "El badge de la pantalla de acceso muestra '1.5.0 alpha' y GET /health devuelve version 1.5.0-alpha."
+    },
+    {
+      "file": "tests/test_agent_cloudflare.py",
+      "change_type": "created",
+      "description": "29 casos sobre el backend hosted: forma de la peticion (path, cabecera Authorization, cuerpo con messages/max_tokens/temperature), token solo en cabecera, errores 401/403/429/400/500 saneados, envelope con success=false, JSON invalido, respuesta sin texto, timeout, host inalcanzable, validacion del id de modelo (incluido intento de traversal) y los endpoints /agent/status y /agent/chat de extremo a extremo contra un servidor local.",
+      "reason": "Fijar las propiedades que un revisor tendria que creer sin comprobar, sobre todo que el token no se filtra nunca.",
+      "impact": "Cobertura del segundo runtime y de la frontera de seguridad del token.",
+      "verification": "29 passed."
+    },
+    {
+      "file": "tests/test_db_cascade.py",
+      "change_type": "created",
+      "description": "Dos casos: el PRAGMA foreign_keys esta activo en SQLite y un DELETE core de Project elimina sus analysis_runs y findings.",
+      "reason": "Regresion del bug de integridad corregido (filas huerfanas tras un rollback).",
+      "impact": "Protege la invariante frente a cambios futuros.",
+      "verification": "2 passed."
+    },
+    {
+      "file": "README.md",
+      "change_type": "modified",
+      "description": "Reescrito como guia del propio proyecto: se elimina el marco de 'esto es solo la vista previa y las copias de despliegue se publican aparte' y se afirma que Main es la unica version; se anaden 'Running it locally' (requisitos, backend, frontend, configuracion, tests y build), 'Install it as an app (PWA)' (Android, iOS/iPadOS, que se cachea y que no), 'Deploying' (base de datos incluida Supabase, backend, frontend, variables, comprobaciones posteriores) y 'Security notes'; se actualizan arquitectura, modelo de datos, settings, sistema de diseno, estado, versionado (entrada 1.5.0-alpha) y roadmap.",
+      "reason": "Apartado 12 del encargo: actualizacion obligatoria del README, sin conservar instrucciones obsoletas y sin duplicar informacion en otros archivos.",
+      "impact": "Un desarrollador nuevo puede levantar el proyecto y publicarlo siguiendo el documento.",
+      "verification": "Todos los comandos documentados se han ejecutado en este entorno: creacion de venv y pip install, init_db.py, uvicorn --port 8001, npm install, npm run dev (proxy configurado), npm run build (desde frontend y con --prefix desde la raiz), npm run preview (sirve el dist y la PWA en :4173) y pytest."
+    },
+    {
+      "file": "docs/API_CONTRACT.md",
+      "change_type": "modified",
+      "description": "Seccion nueva '6. Findings agent' (GET /agent/status y POST /agent/chat con cuerpos, codigos y errores reales) y seccion '7. Secrets'.",
+      "reason": "Los endpoints del agente no estaban documentados y el contrato debe describir lo que el API hace hoy.",
+      "impact": "Contrato completo sin duplicar el README.",
+      "verification": "Contrastado con el codigo y con las respuestas reales del smoke test."
+    },
+    {
+      "file": "docs/ANALYSIS_ENGINE.md",
+      "change_type": "modified",
+      "description": "Seccion 11: cascada de borrado y PRAGMA foreign_keys, ruta PostgreSQL/Supabase con asyncpg y SSL, y las dos diferencias deliberadas (JSON generico y timestamps sin zona). Seccion 14: filas para los tests del agente y de la cascada.",
+      "reason": "Evitar que la documentacion secundaria contradiga el comportamiento real.",
+      "impact": "Documentacion coherente con el codigo.",
+      "verification": "Contrastado con app/db/session.py, alembic/env.py y requirements.txt."
+    },
+    {
+      "file": "create_admin.py",
+      "change_type": "modified",
+      "description": "El script dejaba de tener sentido como estaba: creaba un usuario llamado 'admin' con la contrasena 1234 escrita en el propio archivo, y no existe ningun rol de administrador en el esquema (users solo tiene email, password_hash y fechas). Ahora recibe el correo por argumento y la contrasena por consola (oculta con getpass) o por --password, exige la misma longitud minima que POST /auth/register, valida el correo con el mismo validador que el API, es idempotente (se niega a sobrescribir sin --reset), imprime la base de datos destino enmascarada antes de escribir y nunca muestra ni almacena la contrasena en claro.",
+      "reason": "Era una credencial universal escrita en un archivo rastreado por git: cualquiera que leyera el repositorio o la imagen desplegada podia entrar con admin@stackwise.com / 1234. Tambien incumplia la regla 10 del encargo (ninguna credencial en el codigo fuente).",
+      "impact": "Se puede seguir creando una cuenta de pruebas en cualquier maquina, pero sin credenciales incrustadas ni nombre enganoso. El README lo documenta en la seccion de puesta en marcha local, que antes no lo mencionaba.",
+      "verification": "Se comprobo el rechazo de contrasena corta y de correo invalido, la idempotencia (segunda ejecucion sin --reset), la creacion real de una cuenta en la base local y el login contra el API en ejecucion (200 con token, 401 con contrasena incorrecta, /auth/me correcto y sin acceso a datos de otros usuarios)."
+    },
+    {
+      "file": "PROGRESS_REPORT.json",
+      "change_type": "created",
+      "description": "Este informe: bitacora tecnica del trabajo, con cambios, integraciones, variables, pruebas, decisiones, problemas conocidos, acciones manuales y estado de despliegue.",
+      "reason": "Apartado 17 del encargo.",
+      "impact": "Permite retomar el trabajo sin depender de la conversacion.",
+      "verification": "Validado con json.load (JSON valido, sin comentarios ni comas finales)."
+    }
+  ],
+  "integrations": {
+    "supabase": {
+      "status": "prepared_not_verified",
+      "details": [
+        "No existe acoplamiento con el SDK de Supabase en el codigo: la integracion prevista es PostgreSQL directo a traves de SQLALCHEMY_URL.",
+        "El esquema es portable: UUID del dialecto Postgres, ondelete=CASCADE en el DDL, JSON generico, una unica revision baseline de Alembic con batch_alter_table para SQLite, y alembic/env.py traduce el URL asincrono al driver sincrono para migrar.",
+        "Se anadio asyncpg a requirements.txt: sin el, postgresql+asyncpg:// no arranca (era el unico bloqueo real).",
+        "SQLite ahora aplica las claves foraneas (PRAGMA foreign_keys=ON), de modo que la semantica de borrado coincide con la de Postgres.",
+        "No se ha podido conectar a un Postgres/Supabase real: en este entorno no hay demonio Docker ni servidor PostgreSQL y no existen credenciales autorizadas. Todo lo relativo a Postgres es inferencia a partir de tipos, DDL y Alembic, no ejecucion."
+      ],
+      "manual_actions": [
+        "Crear el proyecto en Supabase y copiar la cadena de conexion del pooler (Session mode, puerto 5432).",
+        "pip install -r requirements.txt (incluye asyncpg).",
+        "Definir SQLALCHEMY_URL=postgresql+asyncpg://<usuario>:<password>@<host>:5432/<db>?ssl=require y DATABASE_URL con la misma cadena en formato sincrono (para Alembic).",
+        "Aplicar el esquema: alembic upgrade head.",
+        "Comprobar GET /health y GET /api/v1/health (database ok) y ejecutar un analisis completo."
+      ]
+    },
+    "cloudflare_workers_ai": {
+      "status": "implemented_verified_up_to_authentication",
+      "details": [
+        "Backend implementado (app/agent/cloudflare.py) y seleccionable con AGENT_BACKEND=cloudflare; modelo de referencia @cf/qwen/qwen2.5-coder-32b-instruct (verificado en el catalogo oficial: 32.768 tokens de contexto, facturacion por token).",
+        "Forma del endpoint verificada contra la API real: POST /client/v4/accounts/{id}/ai/run/@cf/qwen/qwen2.5-coder-32b-instruct con cuerpo {messages, max_tokens} devuelve HTTP 401 y el envelope propio de Cloudflare ({success:false, errors:[{code:10000,message:'Authentication error'}]}), lo que confirma ruta y formato.",
+        "Con la API arrancada en modo cloudflare y credenciales de prueba, POST /agent/chat devolvio 503 con el motivo saneado ('Cloudflare Workers AI rejected the credentials: check CLOUDFLARE_API_TOKEN...'), es decir: la llamada salio a Cloudflare, se tradujo el error y no se filtro el token.",
+        "El formato de peticion/respuesta esta verificado con un servidor HTTP local (29 tests), no con una generacion real.",
+        "El token solo viaja en la cabecera Authorization; no hay ninguna variable VITE_* con secretos, no aparece en respuestas ni en logs (comprobado en el log del API en ejecucion) y se sustituye por <redacted> en cualquier texto de error.",
+        "El modelo por defecto sigue siendo qwen; no se ha cambiado el comportamiento existente."
+      ],
+      "manual_actions": [
+        "Crear el token en Cloudflare (Workers AI -> Use REST API) con permiso 'Workers AI - Read' y copiar el Account ID.",
+        "Definir CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN en el .env y poner AGENT_BACKEND=cloudflare.",
+        "Reiniciar la API y comprobar GET /api/v1/agent/status (available true) y una pregunta real en el chat.",
+        "Tener en cuenta el coste: aproximadamente 0,66 USD por millon de tokens de entrada y 1,00 USD por millon de salida."
+      ]
+    },
+    "mini_agent": {
+      "status": "integrated_in_main",
+      "details": [
+        "El agente vive dentro de StackWise Main (app/agent/) detras del protocolo AgentBackend; no hay servicio ni proceso independiente ni se ha creado infraestructura nueva.",
+        "Dos runtimes intercambiables: qwen (local, opcional, con requirements-agent.txt) y cloudflare (hosted, nuevo), mas none para desactivarlo.",
+        "GET /agent/status y POST /agent/chat con contexto acotado por settings, hallazgos tratados como datos citados y nunca como instrucciones, limite de peticiones por usuario y 503 con motivo saneado cuando el runtime no esta disponible.",
+        "Analizadores integrados en el mismo proceso del API (BackgroundTask) con subproceso, entorno saneado, rlimits y timeout de grupo de procesos; se mantiene tal cual, incluida su limitacion documentada (no es un sandbox)."
+      ],
+      "manual_actions": [
+        "Elegir runtime: AGENT_BACKEND=cloudflare (recomendado si el host no tiene GPU ni RAM) o AGENT_BACKEND=qwen con pip install -r requirements-agent.txt."
+      ]
+    }
+  },
+  "database": {
+    "migrations_created": [],
+    "schema_changes": [
+      "Ninguno. No se ha anadido ni modificado ninguna tabla ni columna: la revision baseline existente (d0be4f4dea77) sigue siendo el unico cambio de esquema.",
+      "Cambio de comportamiento (no de esquema): SQLite ahora aplica las claves foraneas, por lo que los borrados en cascada coinciden con Postgres."
+    ],
+    "relevant_queries": [
+      "El DELETE core de Project en POST /projects/from-repo (app/api/v1/projects.py) y el DELETE /projects/{id} via ORM son los dos caminos afectados por la cascada."
+    ],
+    "pending": [
+      "Aplicar alembic upgrade head contra la base de datos definitiva (no ejecutado: sin Postgres disponible).",
+      "Ninguna migracion destructiva ejecutada."
+    ]
+  },
+  "environment_variables": [
+    {"name": "SECRET_KEY", "used_by": "backend", "purpose": "Firma de los JWT; sin valor por defecto, la aplicacion no arranca sin el", "required": true, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "SQLALCHEMY_URL", "used_by": "backend", "purpose": "URL del engine async (SQLite por defecto; postgresql+asyncpg:// para Supabase)", "required": true, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "DATABASE_URL", "used_by": "backend, docker-compose", "purpose": "URL sincrona de despliegue (Alembic y docker-compose)", "required": false, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "CLOUDFLARE_ACCOUNT_ID", "used_by": "backend", "purpose": "Cuenta de Cloudflare para Workers AI", "required": true, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "CLOUDFLARE_API_TOKEN", "used_by": "backend", "purpose": "Token de Workers AI (permiso Workers AI - Read)", "required": true, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "CLOUDFLARE_MODEL_ID", "used_by": "backend", "purpose": "Id de catalogo del modelo hosted (por defecto @cf/qwen/qwen2.5-coder-32b-instruct)", "required": false, "manual_configuration_required": false, "secret_value_included": false},
+    {"name": "AGENT_BACKEND", "used_by": "backend", "purpose": "Runtime del agente: qwen | cloudflare | none", "required": false, "manual_configuration_required": false, "secret_value_included": false},
+    {"name": "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET", "used_by": "backend", "purpose": "OAuth Google (opcional; un par vacio desactiva el proveedor)", "required": false, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET", "used_by": "backend", "purpose": "OAuth GitHub (opcional)", "required": false, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "API_PUBLIC_URL", "used_by": "backend", "purpose": "Origen propio con el que se construyen las redirect URI de OAuth", "required": false, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "FRONTEND_URL", "used_by": "backend", "purpose": "Origen al que vuelve el navegador tras el OAuth", "required": false, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "CORS_ORIGINS", "used_by": "backend", "purpose": "Origenes permitidos; el valor por defecto [\"*\"] debe restringirse en produccion", "required": false, "manual_configuration_required": true, "secret_value_included": false},
+    {"name": "VITE_API_URL", "used_by": "frontend", "purpose": "URL del API para el SPA; por defecto usa la ruta relativa /api/v1", "required": false, "manual_configuration_required": true, "secret_value_included": false}
+  ],
+  "tests": [
+    {"name": "Suite backend (linea base, antes de cambios)", "status": "passed", "details": "229 passed en 38,76s."},
+    {"name": "Suite backend (final)", "status": "passed", "details": "260 passed en 46,90s (31 casos nuevos: 29 del backend Cloudflare y 2 de la cascada)."},
+    {"name": "Build de produccion del frontend", "status": "passed", "details": "tsc + vite build, con service worker generado (10 entradas precacheadas); tambien con `npm run build --prefix frontend` desde la raiz."},
+    {"name": "Smoke test del API por HTTP real", "status": "passed", "details": "uvicorn en :8001 con base SQLite temporal: /health, registro, login, /auth/me, creacion de proyecto, subida de ZIP (202), ejecucion completada en 0,53s con ruff 0.16.10, bandit 1.9.4 y radon 6.0.1, 4 hallazgos normalizados (B602, B608, B404, F401), dashboard y 401 sin token."},
+    {"name": "Agente en modo qwen sin el modelo instalado", "status": "passed", "details": "/agent/status devuelve available=false con el motivo y /agent/chat responde 503 con ese mismo motivo saneado."},
+    {"name": "Agente en modo cloudflare contra la API real", "status": "passed", "details": "/agent/status disponible y /agent/chat 503 con el motivo saneado tras la respuesta 401 real de Cloudflare; el token no aparece en la respuesta ni en el log."},
+    {"name": "PWA en navegador (build de produccion)", "status": "passed", "details": "Manifiesto 200 con nombre, start_url, display e iconos correctos; iconos y favicon 200; service worker activado con scope /; contexto seguro; metadatos iOS presentes."},
+    {"name": "Sin conexion", "status": "passed", "details": "Con la red emulada como desconectada, el documento se sirve desde el service worker (fromServiceWorker true, 200), la peticion a /api falla a nivel de red (no se sirve de cache) y aparece el aviso explicito con Reintentar."},
+    {"name": "Actualizacion del service worker", "status": "passed", "details": "Al simular un despliegue (sw.js modificado) y forzar la comprobacion, el worker queda en waiting y aparece el aviso 'Hay una version nueva'; al pulsar Recargar se activa, el aviso desaparece y la sesion y los datos siguen intactos."},
+    {"name": "Drawer movil y foco", "status": "passed", "details": "A 320px: boton de menu 44x44, panel de 272px, role=dialog con aria-modal, Tab cicla solo dentro del panel, Escape cierra y devuelve el foco al boton, y el fondo no es una parada de tabulacion."},
+    {"name": "Layout 320 / 768 / 1440", "status": "passed", "details": "Sin desbordamiento horizontal en ninguno de los tres anchos (scrollWidth == innerWidth); sidebar de 256px a partir de 768; 4/2/1 columnas en las tarjetas de estadisticas; la tabla de proyectos se desplaza dentro de su tarjeta."},
+    {"name": "Estados de error del frontend", "status": "passed", "details": "Con GET /projects abortado: mensaje de fallo con Reintentar y sin el texto de lista vacia; al pulsar Reintentar cargan los datos. Con el API caido: estado de sesion inalcanzable y token conservado."},
+    {"name": "Instalacion en iPhone/iPad real", "status": "not_run", "details": "No hay hardware Apple disponible. Los metadatos, el icono PNG de 180px y el manifiesto estan implementados y comprobados, pero el flujo Compartir -> Anadir a pantalla de inicio no se ha probado fisicamente."},
+    {"name": "Instalacion en Android real", "status": "not_run", "details": "Sin dispositivo Android. La instalabilidad se ha comprobado en Chromium de escritorio (manifiesto valido, iconos, service worker, contexto seguro)."},
+    {"name": "Conexion a PostgreSQL/Supabase", "status": "not_run", "details": "Sin demonio Docker, sin servidor PostgreSQL y sin credenciales autorizadas en este entorno."},
+    {"name": "Generacion real con Cloudflare Workers AI", "status": "blocked", "details": "Requiere un token real con permiso Workers AI - Read, que no existe en el repositorio ni se ha solicitado."},
+    {"name": "Suite de tests del frontend", "status": "not_run", "details": "El proyecto no tiene runner de tests de frontend; la verificacion se ha hecho con el build type-checked y comprobaciones en navegador real."}
+  ],
+  "pwa_and_mobile": {
+    "manifest": "frontend/public/manifest.webmanifest (id, name, short_name, description, lang, start_url, scope, display standalone, orientation any, theme_color y background_color #eef1f6, categories, 3 entradas de iconos). Servido con 200 y validado por el navegador.",
+    "icons": "icon-192.png (192x192, esquinas), icon-512.png (512x512, maskable a sangre), icon-maskable.svg (fuente del maskable, W al 60% dentro de la zona segura) y apple-touch-icon.png (180x180, RGB opaco). Generados con rsvg-convert desde la marca existente; favicon.svg se conserva.",
+    "service_worker": "Generado por vite-plugin-pwa 1.3.0 (generateSW): precache de 10 entradas (HTML, CSS, JS, iconos, manifiesto, favicon), NavigationRoute hacia /index.html con denylist /^\\/api\\//, ruta NetworkOnly para cualquier pathname que empiece por /api/, y runtime caching CacheFirst/StaleWhileRevalidate para las dos fuentes de Google. registerType 'prompt' (el worker nuevo espera) e injectRegister false (registra React).",
+    "ios_metadata": "viewport-fit=cover, apple-mobile-web-app-capable, apple-mobile-web-app-status-bar-style default, apple-mobile-web-app-title, mobile-web-app-capable, apple-touch-icon 180x180 y theme-color por esquema de color.",
+    "mobile_adaptations": "Sidebar de 256px -> drawer por debajo de 768px con foco atrapado; min-h-dvh; areas seguras en barra, drawer, pie y FAB; objetivos tactiles de 44px; campos a 16px; badges y textos auxiliares a 12px; tablas con scroll horizontal interno; paneles flotantes con alturas en dvh y ancho limitado por viewport; aviso de sin conexion/actualizacion.",
+    "checks_performed": [
+      "Manifiesto e iconos servidos 200 y contenidos verificados.",
+      "Service worker registrado y activado; precache inspeccionada (no contiene nada de /api).",
+      "Documento servido desde cache con la red desconectada y peticion a /api fallando a nivel de red.",
+      "Aviso de actualizacion tras simular un despliegue; activacion correcta al aceptar.",
+      "320/768/1440 sin desbordamiento horizontal; drawer, paneles y tabla medidos.",
+      "Controles y campos medidos (44px, 16px) en el build real."
+    ],
+    "not_verified": [
+      "Instalacion fisica en iOS/iPadOS y Android.",
+      "Comportamiento del teclado virtual real (no emulable de forma fiable en headless).",
+      "Orientacion horizontal en dispositivo real (la emulacion de viewport si se comprobo)."
+    ]
+  },
+  "documentation": {
+    "readme_updated": true,
+    "other_files_updated": [
+      ".env.example",
+      "docs/API_CONTRACT.md",
+      "docs/ANALYSIS_ENGINE.md",
+      "PROGRESS_REPORT.json"
+    ],
+    "notes": [
+      "El README ya no se presenta como vista previa de copias de despliegue separadas: afirma que este repositorio es Stackwise Main y documenta como ejecutarlo, instalarlo como app y desplegarlo.",
+      "Las capturas de docs/preview/*.webp siguen siendo las anteriores: no se han regenerado porque no se ha solicitado y el encargo pide evitar cambios visuales radicales; el layout de escritorio es el mismo.",
+      "docs/ANALYSIS_ENGINE.md sigue siendo el documento de detalle del motor; el contrato del agente se documento en docs/API_CONTRACT.md para no duplicar informacion."
+    ]
+  },
+  "technical_decisions": [
+    "Cloudflare Workers AI se integra como una implementacion mas del protocolo AgentBackend, no como servicio aparte: el seam ya existia y el encargo prohibe dividir Main.",
+    "No se cambia el backend por defecto (sigue siendo qwen): el encargo prohibe reemplazar tecnologias funcionales sin justificacion tecnica concreta.",
+    "Se usa la variante nativa /ai/run con {messages, max_tokens, temperature} en lugar del endpoint compatible con OpenAI, porque es la que documenta la ficha del modelo elegido.",
+    "El id del modelo se valida con una expresion regular antes de interpolarse en la URL: urllib.parse.quote no escapa el punto, asi que un '..' habria podido redirigir la peticion fuera de la ruta prevista.",
+    "El backend hosted acepta base_url y transport inyectables (para poder probar la peticion real sin red) pero no los expone como variable de entorno, para no abrir un SSRF configurable.",
+    "SQLite se corrige con PRAGMA foreign_keys=ON en lugar de reescribir las rutas de borrado: los dos motores soportados pasan a coincidir sin tocar la logica de negocio.",
+    "El manifiesto de la PWA es un archivo estatico real (no generado por el plugin) para que lo que recibe el navegador pueda inspeccionarse sin construir; vite-plugin-pwa se usa solo para el service worker y el precache.",
+    "El service worker es NetworkOnly para /api y solo cachea el shell y las fuentes: no se guarda ninguna respuesta autenticada, y el aviso de 'listo sin conexion' se omite a proposito porque analizar sin backend no es posible.",
+    "registerType 'prompt' en lugar de autoUpdate: una recarga automatica descartaria un formulario a medias o un analisis que se esta mirando.",
+    "Se anadio el proxy tambien a `preview` para que el comando documentado sirva la PWA (y el service worker, que solo existe en build de produccion) contra un API local.",
+    "Los estados de error se resolvieron con un componente compartido (ErrorState) usado por tres pantallas en lugar de duplicar el mismo bloque.",
+    "Card deja de aceptar onClick: la unica tarjeta clicable pasa a ser un boton real, porque un div con onClick es inalcanzable con teclado.",
+    "La comprobacion de sesion distingue 401/403 (sesion terminada) de cualquier otro fallo (API inalcanzable), conservando el token en el segundo caso.",
+    "La version se sube a 1.5.0-alpha en los tres puntos que el propio proyecto documenta como sincronizados, y se registra en el changelog del README."
+  ],
+  "known_issues": [
+    "datetime.utcnow() esta obsoleto en Python 3.14 (cientos de avisos en la suite, en modelos, security.py, status.py y tests). No rompe nada hoy; queda como deuda tecnica documentada en el roadmap.",
+    "HTTP_422_UNPROCESSABLE_ENTITY y HTTP_413_REQUEST_ENTITY_TOO_LARGE estan obsoletos en Starlette.",
+    "Los analizadores corren en subproceso con rlimits (CPU, memoria, tamano de fichero, timeout de grupo) pero sin aislamiento de red ni namespaces/cgroups: no es un sandbox. Es la limitacion principal y ya estaba documentada.",
+    "No hay cola real de trabajos: los analisis se ejecutan como BackgroundTask dentro del proceso del API (sin reintentos ni cancelacion; el estado cancelled existe pero nada lo produce).",
+    "El rate limiting y los limites de concurrencia son por proceso, no distribuidos.",
+    "CORS_ORIGINS tiene valor por defecto [\"*\"] y allow_credentials a la vez: debe restringirse en el despliegue (documentado en las notas de seguridad).",
+    "El aviso de sin conexion/actualizacion es un banner fijo en la parte superior y puede solaparse momentaneamente con el titulo de la pagina en escritorio; es transitorio y descartable.",
+    "El enlace 'Saltar al contenido' apunta a #sw-main: el foco se mueve, pero el contenedor no tiene tabindex, de modo que el siguiente Tab empieza en el primer control del contenido (comportamiento estandar de un enlace de salto).",
+    "Sin runner de tests de frontend, las reglas de layout movil no quedan fijadas por pruebas automaticas.",
+    "Codigo sin uso que NO se ha eliminado (el encargo prohibe borrar sin autorizacion expresa): AnalysisPersistenceService.count_findings y delete_findings, AnalyzerRegistry.applicable_languages, TokenData en app/schemas/user.py.",
+    "El esquema usa JSON generico (no JSONB) y DateTime sin zona horaria: portable, pero pierde operadores JSON e informacion de zona en PostgreSQL.",
+    "Las capturas de la documentacion (docs/preview/*.webp) son anteriores a esta version; el layout de escritorio no cambio, pero no reflejan la barra movil ni el aviso de PWA."
+  ],
+  "manual_actions_required": [
+    "Configurar el .env a partir de .env.example: como minimo SECRET_KEY; CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN si se usa el agente hosted; SQLALCHEMY_URL si se pasa a Supabase/Postgres.",
+    "Restringir CORS_ORIGINS al origen real del SPA antes de publicar y mantener DEV_OAUTH_MOCK=false.",
+    "Servir el frontend por HTTPS (la PWA y el service worker no funcionan sin contexto seguro) y con fallback de SPA hacia index.html.",
+    "Si se cambia de motor de base de datos, ejecutar alembic upgrade head contra la base de datos definitiva.",
+    "Probar la instalacion real en un iPhone/iPad (Compartir -> Anadir a pantalla de inicio) y en un Android, que es la unica parte del encargo sin verificar.",
+    "Probar una generacion real del agente con un token de Workers AI valido.",
+    "Revisar este informe y el informe final en texto antes de publicar. No se ha hecho git push ni ningun despliegue: la publicacion queda en manos del usuario."
+  ],
+  "next_steps": [
+    "Verificar la instalacion como PWA en hardware iOS y Android reales.",
+    "Ejecutar la migracion baseline contra la base de datos definitiva (Supabase o Postgres propio) y comprobar el flujo completo con datos reales.",
+    "Configurar un token de Workers AI y validar una respuesta generada de extremo a extremo.",
+    "Anadir un runner de tests de frontend (Vitest) para fijar el layout movil y los estados de error.",
+    "Retirar las llamadas obsoletas (datetime.utcnow, constantes de estado de Starlette) y limpiar el codigo muerto listado arriba, con autorizacion expresa.",
+    "Sustituir la tarea en segundo plano por un worker real para que los analisis sobrevivan a un reinicio.",
+    "Regenerar las capturas de la documentacion con el layout movil y el banner de PWA."
+  ],
+  "deployment": {
+    "deployed": false,
+    "git_push_performed": false,
+    "remote_changes_performed": false
+  }
+}

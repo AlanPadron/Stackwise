@@ -1,0 +1,635 @@
+"""OAuth sign-in and the GitHub repository import.
+
+The provider round-trip is stubbed at the service boundary (`exchange_code` /
+`fetch_identity` / the GitHub calls) so the flow under test is *our* code: state
+handling, account resolution, linking and the import pipeline.
+"""
+
+import tempfile
+import uuid
+import zipfile
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+
+from app.core import security
+from app.core.config import settings
+from app.db.session import AsyncSessionLocal
+from app.main import app
+from app.models.oauth import OAuthAccount
+from app.services import github as github_service
+from app.services import oauth as oauth_service
+from app.services.oauth import Identity, OAuthError
+
+
+def _client() -> AsyncClient:
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+def _configure(monkeypatch, provider: str = "google") -> None:
+    """Give a provider credentials for the duration of one test."""
+    monkeypatch.setattr(settings, f"{provider.upper()}_CLIENT_ID", "test-client-id")
+    monkeypatch.setattr(settings, f"{provider.upper()}_CLIENT_SECRET", "test-client-secret")
+
+
+def _stub_provider(monkeypatch, identity: Identity, access_token: str = "provider-token") -> None:
+    async def exchange_code(provider, code):
+        return {"access_token": access_token, "scope": provider.scope}
+
+    async def fetch_identity(provider, token):
+        return identity
+
+    monkeypatch.setattr(oauth_service, "exchange_code", exchange_code)
+    monkeypatch.setattr(oauth_service, "fetch_identity", fetch_identity)
+
+
+async def _authorize_url(
+    client: AsyncClient, provider: str = "google", headers: dict | None = None, **params
+) -> str:
+    response = await client.get(
+        f"/api/v1/auth/oauth/{provider}/authorize", params=params, headers=headers
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["authorization_url"]
+
+
+async def _me(client: AsyncClient, token: str) -> dict:
+    response = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _token_from_redirect(response) -> str:
+    """Pull the session token out of the `Location` fragment."""
+    assert response.status_code == 302, response.text
+    fragment = parse_qs(urlparse(response.headers["location"]).fragment)
+    assert "token" in fragment, response.headers["location"]
+    return fragment["token"][0]
+
+
+# --- provider availability ---------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_providers_reports_configuration(monkeypatch):
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "")
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", "")
+    monkeypatch.setattr(settings, "DEV_OAUTH_MOCK", False)
+    _configure(monkeypatch, "github")
+
+    async with _client() as client:
+        response = await client.get("/api/v1/auth/providers")
+
+    assert response.status_code == 200
+    assert response.json() == {"google": False, "github": True, "mock": False}
+
+
+@pytest.mark.asyncio
+async def test_authorize_rejects_unconfigured_provider(monkeypatch):
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "")
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", "")
+
+    async with _client() as client:
+        response = await client.get("/api/v1/auth/oauth/google/authorize")
+
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_authorize_rejects_unknown_provider(monkeypatch):
+    _configure(monkeypatch)
+
+    async with _client() as client:
+        response = await client.get("/api/v1/auth/oauth/bitbucket/authorize")
+
+    assert response.status_code == 404
+
+
+# --- the authorization URL ---------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_authorize_builds_provider_url_with_signed_state(monkeypatch):
+    _configure(monkeypatch, "github")
+
+    async with _client() as client:
+        url = await _authorize_url(client, "github", next="/projects/import")
+
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+
+    assert parsed.netloc == "github.com"
+    assert query["client_id"] == ["test-client-id"]
+    assert query["scope"] == [oauth_service.PROVIDERS["github"].scope]
+    assert query["redirect_uri"] == [
+        f"{settings.API_PUBLIC_URL}/api/v1/auth/oauth/github/callback"
+    ]
+
+    claims = security.read_oauth_state(query["state"][0])
+    assert claims["provider"] == "github"
+    assert claims["next"] == "/projects/import"
+    assert claims["link_user_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_authorize_drops_offsite_next(monkeypatch):
+    """`next` must never become an open redirect."""
+    _configure(monkeypatch)
+
+    async with _client() as client:
+        url = await _authorize_url(client, "google", next="https://evil.example.com")
+
+    claims = security.read_oauth_state(parse_qs(urlparse(url).query)["state"][0])
+    assert claims["next"] is None
+
+
+@pytest.mark.asyncio
+async def test_authorize_links_when_signed_in(monkeypatch):
+    _configure(monkeypatch, "github")
+    email = f"linker_{uuid.uuid4().hex}@example.com"
+
+    async with _client() as client:
+        await client.post(
+            "/api/v1/auth/register", json={"email": email, "password": "password123"}
+        )
+        login = await client.post(
+            "/api/v1/auth/login", data={"username": email, "password": "password123"}
+        )
+        token = login.json()["access_token"]
+
+        url = await _authorize_url(
+            client, "github", headers={"Authorization": f"Bearer {token}"}
+        )
+
+    claims = security.read_oauth_state(parse_qs(urlparse(url).query)["state"][0])
+    assert claims["link_user_id"] is not None
+
+
+# --- the callback ------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_callback_creates_account_and_returns_session(monkeypatch):
+    _configure(monkeypatch)
+    identity = Identity(provider_user_id=uuid.uuid4().hex, email=f"gh_{uuid.uuid4().hex}@example.com", login="octocat")
+    _stub_provider(monkeypatch, identity, access_token="gh-token")
+    state = security.create_oauth_state("google", None, "/dashboard")
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={"code": "auth-code", "state": state},
+        )
+        me = await _me(client, _token_from_redirect(response))
+
+    assert me["email"] == identity.email
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["next"] == ["/dashboard"]
+
+    # The provider token must be stored: it is the credential the repo import uses.
+    async with AsyncSessionLocal() as db:
+        account = (
+            await db.execute(
+                select(OAuthAccount).where(
+                    OAuthAccount.provider_user_id == identity.provider_user_id
+                )
+            )
+        ).scalar_one()
+        assert account.access_token == "gh-token"
+        assert account.provider_login == "octocat"
+
+
+@pytest.mark.asyncio
+async def test_callback_is_idempotent_for_the_same_identity(monkeypatch):
+    _configure(monkeypatch)
+    identity = Identity(provider_user_id=uuid.uuid4().hex, email=f"gh_{uuid.uuid4().hex}@example.com")
+    _stub_provider(monkeypatch, identity)
+
+    async with _client() as client:
+        first = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "code": "c1",
+                "state": security.create_oauth_state("google", None, None),
+            },
+        )
+        second = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "code": "c2",
+                "state": security.create_oauth_state("google", None, None),
+            },
+        )
+        first_me = await _me(client, _token_from_redirect(first))
+        second_me = await _me(client, _token_from_redirect(second))
+
+    assert first_me["id"] == second_me["id"]
+
+
+@pytest.mark.asyncio
+async def test_callback_links_an_existing_password_account(monkeypatch):
+    _configure(monkeypatch)
+    email = f"both_{uuid.uuid4().hex}@example.com"
+    _stub_provider(monkeypatch, Identity(provider_user_id=uuid.uuid4().hex, email=email))
+
+    async with _client() as client:
+        registered = await client.post(
+            "/api/v1/auth/register", json={"email": email, "password": "password123"}
+        )
+        user_id = registered.json()["id"]
+
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "code": "c",
+                "state": security.create_oauth_state("google", None, None),
+            },
+        )
+        me = await _me(client, _token_from_redirect(response))
+
+        # The original password still works: the account was linked, not replaced.
+        login = await client.post(
+            "/api/v1/auth/login", data={"username": email, "password": "password123"}
+        )
+
+    assert me["id"] == user_id
+    assert login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_oauth_only_account_cannot_use_password_login(monkeypatch):
+    _configure(monkeypatch)
+    email = f"onlyoauth_{uuid.uuid4().hex}@example.com"
+    _stub_provider(monkeypatch, Identity(provider_user_id=uuid.uuid4().hex, email=email))
+
+    async with _client() as client:
+        await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "code": "c",
+                "state": security.create_oauth_state("google", None, None),
+            },
+        )
+        login = await client.post(
+            "/api/v1/auth/login", data={"username": email, "password": security.UNUSABLE_PASSWORD}
+        )
+
+    assert login.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_a_forged_state(monkeypatch):
+    _configure(monkeypatch)
+    _stub_provider(monkeypatch, Identity(provider_user_id="1", email="x@example.com"))
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={"code": "c", "state": "not-a-signed-state"},
+        )
+
+    assert response.status_code == 302
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["state"]
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_a_state_for_another_provider(monkeypatch):
+    _configure(monkeypatch)
+    _configure(monkeypatch, "github")
+    _stub_provider(monkeypatch, Identity(provider_user_id="1", email="x@example.com"))
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "code": "c",
+                "state": security.create_oauth_state("github", None, None),
+            },
+        )
+
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["state"]
+
+
+@pytest.mark.asyncio
+async def test_callback_reports_a_provider_failure(monkeypatch):
+    _configure(monkeypatch)
+
+    async def failing_exchange(provider, code):
+        raise OAuthError("nope")
+
+    monkeypatch.setattr(oauth_service, "exchange_code", failing_exchange)
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "code": "c",
+                "state": security.create_oauth_state("google", None, None),
+            },
+        )
+
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["provider"]
+
+
+@pytest.mark.asyncio
+async def test_callback_refuses_to_steal_a_linked_identity(monkeypatch):
+    _configure(monkeypatch)
+    identity = Identity(provider_user_id=uuid.uuid4().hex, email=f"own_{uuid.uuid4().hex}@example.com")
+    _stub_provider(monkeypatch, identity)
+
+    async with _client() as client:
+        # First user owns the provider identity.
+        await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "code": "c",
+                "state": security.create_oauth_state("google", None, None),
+            },
+        )
+
+        # A second user asks to link the same identity.
+        email = f"thief_{uuid.uuid4().hex}@example.com"
+        await client.post(
+            "/api/v1/auth/register", json={"email": email, "password": "password123"}
+        )
+        login = await client.post(
+            "/api/v1/auth/login", data={"username": email, "password": "password123"}
+        )
+        token = login.json()["access_token"]
+        url = await _authorize_url(
+            client, "google", headers={"Authorization": f"Bearer {token}"}
+        )
+        state = parse_qs(urlparse(url).query)["state"][0]
+
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback", params={"code": "c", "state": state}
+        )
+
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["link"]
+
+
+# --- the development-only mock provider --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_is_off_unless_enabled(monkeypatch):
+    monkeypatch.setattr(settings, "DEV_OAUTH_MOCK", False)
+
+    async with _client() as client:
+        providers = await client.get("/api/v1/auth/providers")
+        authorize = await client.get("/api/v1/auth/oauth/mock/authorize")
+        consent = await client.get(
+            "/api/v1/auth/oauth/mock/consent", params={"state": "irrelevant"}
+        )
+
+    assert providers.json()["mock"] is False
+    assert authorize.status_code == 503
+    assert consent.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_signs_in_end_to_end(monkeypatch):
+    monkeypatch.setattr(settings, "DEV_OAUTH_MOCK", True)
+
+    async with _client() as client:
+        providers = await client.get("/api/v1/auth/providers")
+        url = await _authorize_url(client, "mock", next="/dashboard")
+
+        # The "provider" is a consent screen served by this API.
+        consent = await client.get(url)
+        assert consent.status_code == 200
+        assert oauth_service.MOCK_IDENTITY.email in consent.text
+        assert f"code={oauth_service.MOCK_CODE}" in consent.text
+
+        state = parse_qs(urlparse(url).query)["state"][0]
+        response = await client.get(
+            "/api/v1/auth/oauth/mock/callback",
+            params={"code": oauth_service.MOCK_CODE, "state": state},
+        )
+        me = await _me(client, _token_from_redirect(response))
+
+    assert providers.json()["mock"] is True
+    assert me["email"] == oauth_service.MOCK_IDENTITY.email
+    assert me["email"].endswith("@example.com")
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_rejects_a_foreign_code(monkeypatch):
+    monkeypatch.setattr(settings, "DEV_OAUTH_MOCK", True)
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/auth/oauth/mock/callback",
+            params={
+                "code": "not-the-mock-code",
+                "state": security.create_oauth_state("mock", None, None),
+            },
+        )
+
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["provider"]
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_cancel_is_reported(monkeypatch):
+    monkeypatch.setattr(settings, "DEV_OAUTH_MOCK", True)
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/auth/oauth/mock/callback",
+            params={
+                "error": "access_denied",
+                "state": security.create_oauth_state("mock", None, None),
+            },
+        )
+
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["denied"]
+
+
+@pytest.mark.asyncio
+async def test_real_provider_cancel_is_reported_too(monkeypatch):
+    """A refusal from a real provider sends `error` and no `code`."""
+    _configure(monkeypatch)
+
+    async with _client() as client:
+        response = await client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={
+                "error": "access_denied",
+                "state": security.create_oauth_state("google", None, None),
+            },
+        )
+
+    assert response.status_code == 302
+    assert parse_qs(urlparse(response.headers["location"]).fragment)["error"] == ["denied"]
+
+
+# --- GitHub repositories -----------------------------------------------------
+
+
+async def _register(client: AsyncClient) -> tuple[dict, dict]:
+    email = f"gh_user_{uuid.uuid4().hex}@example.com"
+    registered = await client.post(
+        "/api/v1/auth/register", json={"email": email, "password": "password123"}
+    )
+    login = await client.post(
+        "/api/v1/auth/login", data={"username": email, "password": "password123"}
+    )
+    return registered.json(), {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+async def _link_github(user_id: str, token: str = "gh-token") -> None:
+    async with AsyncSessionLocal() as db:
+        db.add(
+            OAuthAccount(
+                user_id=uuid.UUID(user_id),
+                provider="github",
+                provider_user_id=uuid.uuid4().hex,
+                provider_login="octocat",
+                access_token=token,
+            )
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_repositories_reports_not_connected():
+    async with _client() as client:
+        _, headers = await _register(client)
+        response = await client.get("/api/v1/github/repositories", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"connected": False, "login": None, "repositories": []}
+
+
+@pytest.mark.asyncio
+async def test_repositories_lists_the_connected_account(monkeypatch):
+    async def list_repositories(token):
+        assert token == "gh-token"
+        return [
+            {
+                "full_name": "octocat/hello-world",
+                "name": "hello-world",
+                "owner": "octocat",
+                "private": False,
+                "description": "demo",
+                "default_branch": "main",
+                "language": "Python",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "html_url": "https://github.com/octocat/hello-world",
+            }
+        ]
+
+    monkeypatch.setattr(github_service, "list_repositories", list_repositories)
+
+    async with _client() as client:
+        user, headers = await _register(client)
+        await _link_github(user["id"])
+        response = await client.get("/api/v1/github/repositories", headers=headers)
+
+    body = response.json()
+    assert body["connected"] is True
+    assert body["login"] == "octocat"
+    assert body["repositories"][0]["full_name"] == "octocat/hello-world"
+
+
+@pytest.mark.asyncio
+async def test_repositories_surfaces_a_github_failure(monkeypatch):
+    async def failing(token):
+        raise github_service.GitHubError("GitHub rejected the repository list (401)", 401)
+
+    monkeypatch.setattr(github_service, "list_repositories", failing)
+
+    async with _client() as client:
+        user, headers = await _register(client)
+        await _link_github(user["id"])
+        response = await client.get("/api/v1/github/repositories", headers=headers)
+
+    assert response.status_code == 502
+
+
+# --- importing a repository --------------------------------------------------
+
+
+def _repository_zip() -> str:
+    """A real ZIP with one lintable Python file, as GitHub's zipball would give."""
+    path = tempfile.NamedTemporaryFile(delete=False, suffix=".zip").name
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("hello-world-main/app.py", "import os\n\n\ndef f():\n    return 1\n")
+    return path
+
+
+@pytest.mark.asyncio
+async def test_import_requires_a_github_connection():
+    async with _client() as client:
+        _, headers = await _register(client)
+        response = await client.post(
+            "/api/v1/projects/from-repo",
+            json={"repository": "octocat/hello-world"},
+            headers=headers,
+        )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_import_creates_a_project_and_runs_the_analysis(monkeypatch):
+    async def download(token, full_name, ref=None):
+        assert full_name == "octocat/hello-world"
+        return _repository_zip()
+
+    monkeypatch.setattr(github_service, "download_repository_zip", download)
+
+    async with _client() as client:
+        user, headers = await _register(client)
+        await _link_github(user["id"])
+        response = await client.post(
+            "/api/v1/projects/from-repo",
+            json={"repository": "octocat/hello-world"},
+            headers=headers,
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+
+        # The background task has already run by the time ASGITransport returns.
+        run = await client.get(f"/api/v1/analyses/{body['run']['id']}", headers=headers)
+        findings = await client.get(
+            f"/api/v1/analyses/{body['run']['id']}/findings", headers=headers
+        )
+
+    assert body["project"]["name"] == "hello-world"
+    assert body["run"]["source_type"] == "github"
+    assert run.json()["status"] == "completed"
+    # `import os` is unused, so ruff must report at least one finding.
+    assert len(findings.json()) >= 1
+
+
+@pytest.mark.asyncio
+async def test_import_maps_a_missing_repository_to_404(monkeypatch):
+    async def download(token, full_name, ref=None):
+        raise github_service.GitHubError("Could not download nope/nope (404)", 404)
+
+    monkeypatch.setattr(github_service, "download_repository_zip", download)
+
+    async with _client() as client:
+        user, headers = await _register(client)
+        await _link_github(user["id"])
+        response = await client.post(
+            "/api/v1/projects/from-repo",
+            json={"repository": "nope/nope"},
+            headers=headers,
+        )
+
+    assert response.status_code == 404
+
+
+# --- password sentinel -------------------------------------------------------
+
+
+def test_unusable_password_never_verifies():
+    assert security.verify_password("", security.UNUSABLE_PASSWORD) is False
+    assert security.verify_password(security.UNUSABLE_PASSWORD, security.UNUSABLE_PASSWORD) is False
+    assert security.verify_password("password123", "") is False

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maskable / full-bleed variant of the brand tile: source for the PNG icons that
+  a launcher crops to its own shape (Android adaptive icons, iOS home screen).
+
+  Differences from `favicon.svg`, and why:
+    * no corner radius and no inner border — a maskable icon is cropped by the
+      platform, so any transparency at the edges shows as a cut-out;
+    * the W is inset to 60% of the canvas, inside the 80%-diameter "safe zone"
+      that every launcher guarantees to keep visible.
+
+  Regenerate the PNGs with:
+    rsvg-convert -w 192 -h 192 icon-maskable.svg -o icon-maskable-192.png
+    rsvg-convert -w 512 -h 512 icon-maskable.svg -o icon-512.png
+    rsvg-convert -w 180 -h 180 icon-maskable.svg -o apple-touch-icon.png
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Stackwise">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ea580c" />
+      <stop offset="1" stop-color="#9a3412" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" fill="url(#tile)" />
+
+  <path
+    d="M20 22.5 L26.5 44 L32 28 L37.5 44 L44 22.5"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="5.2"
+    stroke-linecap="butt"
+    stroke-linejoin="miter"
+  />
+</svg>

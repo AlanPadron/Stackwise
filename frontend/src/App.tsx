@@ -1,47 +1,41 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { I18nProvider, useI18n } from './i18n/I18nContext';
 import { SplashContext } from './context/SplashContext';
 import Splash from './components/Splash';
-import { Loader, Switch } from './components/ui';
+import { AgentChat } from './components/AgentChat';
+import { ErrorState } from './components/ErrorState';
+import { PwaStatus } from './components/PwaStatus';
+import { SettingsMenu } from './components/SettingsMenu';
+import { Loader } from './components/ui';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import NewProject from './pages/NewProject';
+import ImportRepo from './pages/ImportRepo';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    const { isAuthenticated, isLoading } = useAuth();
-    if (isLoading) return <Loader fullPage caption="Restoring session…" />;
+    const { isAuthenticated, isLoading, sessionUnreachable, retrySession } = useAuth();
+    const { t } = useI18n();
+    if (isLoading) return <Loader fullPage caption={t('auth.restoring')} />;
+    // A stored session that could not be checked is not a signed-out user: show
+    // the failure and let them try again instead of bouncing them to the form.
+    if (sessionUnreachable) {
+        return <ErrorState message={t('auth.sessionUnreachable')} onRetry={retrySession} />;
+    }
     if (!isAuthenticated) return <Navigate to="/login" replace />;
     return <>{children}</>;
-};
-
-/** Floating tactile switch: the whole theme lives in one control. */
-const ThemeToggle: React.FC = () => {
-    const { theme, toggleTheme } = useTheme();
-    const isDark = theme === 'dark';
-    return (
-        <div className="fixed bottom-6 right-6 z-40 neu-card rounded-neu-lg pl-4 pr-2 py-2 flex items-center gap-3">
-            <span className="text-[0.6875rem] font-bold uppercase tracking-[0.06em] text-faint">
-                Theme
-            </span>
-            <Switch
-                checked={isDark}
-                onChange={toggleTheme}
-                label="Toggle dark mode"
-                thumbOn={<span aria-hidden="true">🌙</span>}
-                thumbOff={<span aria-hidden="true">☀️</span>}
-            />
-        </div>
-    );
 };
 
 const SPLASH_SESSION_KEY = 'stackwise_splash_shown';
 
 const AppContent: React.FC = () => {
+    const { isAuthenticated } = useAuth();
     // The transition screen is shown only when the session starts or the user signs in,
     // not on every reload/navigation within the same session.
     const [showSplash, setShowSplash] = useState(
@@ -55,13 +49,19 @@ const AppContent: React.FC = () => {
 
     return (
         <SplashContext.Provider value={() => setShowSplash(true)}>
-            <ThemeToggle />
+            <PwaStatus />
+            <SettingsMenu />
+            {/* The findings agent is an account feature: no session, no button. */}
+            {isAuthenticated && <AgentChat />}
             <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                {/* Where the OAuth providers send the browser back. */}
+                <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
                 <Route path="/projects/new" element={<ProtectedRoute><NewProject /></ProtectedRoute>} />
+                <Route path="/projects/import" element={<ProtectedRoute><ImportRepo /></ProtectedRoute>} />
                 <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 {/* Unknown URLs must never render an empty shell. */}
@@ -76,9 +76,11 @@ const App: React.FC = () => {
     return (
         <BrowserRouter>
             <ThemeProvider>
-                <AuthProvider>
-                    <AppContent />
-                </AuthProvider>
+                <I18nProvider>
+                    <AuthProvider>
+                        <AppContent />
+                    </AuthProvider>
+                </I18nProvider>
             </ThemeProvider>
         </BrowserRouter>
     );

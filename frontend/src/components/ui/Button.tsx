@@ -5,17 +5,17 @@ export type ButtonVariant = 'primary' | 'neutral' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
-    primary: 'neu-btn--primary',
+    primary: 'sw-btn--primary',
     neutral: '',
-    ghost: 'neu-btn--ghost',
-    danger: 'neu-btn--danger',
+    ghost: 'sw-btn--ghost',
+    danger: 'sw-btn--danger',
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
-    sm: 'neu-btn--sm',
+    sm: 'sw-btn--sm',
     md: '',
-    lg: 'neu-btn--lg',
-    icon: 'neu-btn--icon',
+    lg: 'sw-btn--lg',
+    icon: 'sw-btn--icon',
 };
 
 export interface ButtonProps
@@ -43,17 +43,17 @@ export const Button: React.FC<ButtonProps> = ({
     <button
         type={type}
         className={cx(
-            'neu-btn',
+            'sw-btn',
             VARIANT_CLASS[variant],
             SIZE_CLASS[size],
-            block && 'neu-btn--block',
+            block && 'sw-btn--block',
             className
         )}
         disabled={disabled || loading}
         aria-busy={loading || undefined}
         {...rest}
     >
-        {loading && <span className="neu-btn__spinner" aria-hidden="true" />}
+        {loading && <span className="sw-btn__spinner" aria-hidden="true" />}
         {children}
     </button>
 );

@@ -17,15 +17,15 @@ const FieldShell: React.FC<React.PropsWithChildren<FieldShellProps>> = ({
 }) => (
     <div className="w-full">
         {label && (
-            <label className="neu-label" htmlFor={htmlFor}>
+            <label className="sw-label" htmlFor={htmlFor}>
                 {label}
             </label>
         )}
         {children}
         {error ? (
-            <p className="neu-hint neu-hint--error mt-2">{error}</p>
+            <p className="sw-hint sw-hint--error mt-2">{error}</p>
         ) : (
-            hint && <p className="neu-hint mt-2">{hint}</p>
+            hint && <p className="sw-hint mt-2">{hint}</p>
         )}
     </div>
 );
@@ -39,12 +39,12 @@ export interface InputProps
 
 export const Input: React.FC<InputProps> = ({ label, hint, error, className, id, ...rest }) => {
     const autoId = useId();
-    const inputId = id ?? (label ? `neu-${autoId}` : undefined);
+    const inputId = id ?? (label ? `sw-${autoId}` : undefined);
     return (
         <FieldShell label={label} hint={hint} error={error} htmlFor={inputId}>
             <input
                 id={inputId}
-                className={cx('neu-input', error && 'neu-input--error', className)}
+                className={cx('sw-input', error && 'sw-input--error', className)}
                 aria-invalid={error ? true : undefined}
                 {...rest}
             />
@@ -61,12 +61,12 @@ export interface TextareaProps
 
 export const Textarea: React.FC<TextareaProps> = ({ label, hint, error, className, id, ...rest }) => {
     const autoId = useId();
-    const inputId = id ?? (label ? `neu-${autoId}` : undefined);
+    const inputId = id ?? (label ? `sw-${autoId}` : undefined);
     return (
         <FieldShell label={label} hint={hint} error={error} htmlFor={inputId}>
             <textarea
                 id={inputId}
-                className={cx('neu-input neu-input--textarea', error && 'neu-input--error', className)}
+                className={cx('sw-input sw-input--textarea', error && 'sw-input--error', className)}
                 aria-invalid={error ? true : undefined}
                 {...rest}
             />

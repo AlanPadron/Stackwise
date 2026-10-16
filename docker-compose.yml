@@ -17,6 +17,10 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # DATABASE_URL is the deployment's sync URL. The backend connects with
+      # SQLALCHEMY_URL; point it at the "db" service (and add asyncpg to the image)
+      # to run on Postgres instead of the container's SQLite file:
+      #   SQLALCHEMY_URL=postgresql+asyncpg://postgres:postgres@db:5432/stackwise
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/stackwise
       - SECRET_KEY=development_secret_key_12345
       - ACCESS_TOKEN_EXPIRE_MINUTES=60

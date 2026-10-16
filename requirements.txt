@@ -6,10 +6,25 @@ psycopg2-binary
 pydantic-settings
 pydantic[email]
 python-jose[cryptography]
-passlib[bcrypt]
+# Passwords are hashed with `bcrypt` directly (app/core/security.py); passlib was
+# never imported and its bcrypt backend breaks against bcrypt >= 5.
+bcrypt>=4.0,<6.0
 pytest
 pytest-asyncio
 httpx
-ruff
-bandit
-radon
+
+# --- database ----------------------------------------------------------------
+# The async driver behind SQLALCHEMY_URL (SQLite by default).
+aiosqlite>=0.19,<1.0
+# The async driver for Postgres/Supabase: SQLALCHEMY_URL=postgresql+asyncpg://…
+# (psycopg2-binary above stays, because Alembic migrates through a sync URL).
+asyncpg>=0.30,<1.0
+
+# --- analysis engine ---------------------------------------------------------
+# Analyzer versions are pinned: the engine records the version it executed in
+# `analysis_runs.tool_versions`, and its severity mapping is defined against the
+# rule sets that ship with these versions. Bump deliberately, then re-run the
+# engine test suite (tests/test_analysis_*.py).
+ruff==0.16.10
+bandit==1.9.4
+radon==6.0.1

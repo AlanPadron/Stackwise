@@ -3,7 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import apiClient, { getApiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useSplash } from '../context/SplashContext';
-import { Button, Card, Input } from '../components/ui';
+import { useI18n } from '../i18n/I18nContext';
+import { AuthLayout } from '../components/AuthLayout';
+import { OAuthButtons } from '../components/OAuthButtons';
+import { Button, Input } from '../components/ui';
 
 const Register: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -12,6 +15,7 @@ const Register: React.FC = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const { loginWithCredentials } = useAuth();
+    const { t } = useI18n();
     const triggerSplash = useSplash();
     const navigate = useNavigate();
 
@@ -20,7 +24,7 @@ const Register: React.FC = () => {
         setError('');
 
         if (password !== confirmPassword) {
-            setError('Passwords do not match');
+            setError(t('auth.passwordsDoNotMatch'));
             return;
         }
 
@@ -32,67 +36,72 @@ const Register: React.FC = () => {
             triggerSplash();
             navigate('/dashboard');
         } catch (err: unknown) {
-            setError(getApiErrorMessage(err, 'Registration failed. Please try a different email.'));
+            setError(getApiErrorMessage(err, t('auth.registerFailed')));
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen grid place-items-center p-6 neu-ambient">
-            <Card className="w-full max-w-md p-8 md:p-10 neu-enter">
-                <header className="flex flex-col items-center text-center mb-8">
-                    <span className="neu-mark mb-5">W</span>
-                    <h1 className="text-2xl font-bold tracking-tight">Create account</h1>
-                    <p className="text-sm text-muted mt-1.5">Get started with Stackwise analysis</p>
-                </header>
+        <AuthLayout>
+            <header className="mb-8">
+                <h1 className="text-2xl font-bold tracking-tight">{t('auth.createAccount')}</h1>
+                <p className="text-sm text-muted mt-1.5">{t('auth.registerSubtitle')}</p>
+            </header>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <Input
-                        label="Email"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        autoComplete="email"
-                        required
-                    />
-                    <Input
-                        label="Password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        autoComplete="new-password"
-                        hint="At least 8 characters"
-                        required
-                    />
-                    <Input
-                        label="Confirm Password"
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        autoComplete="new-password"
-                        required
-                    />
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <Input
+                    label={t('auth.email')}
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                />
+                <Input
+                    label={t('auth.password')}
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    hint={t('auth.passwordHint')}
+                    required
+                />
+                <Input
+                    label={t('auth.confirmPassword')}
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                />
 
-                    {error && (
-                        <p className="neu-hint neu-hint--error text-center neu-enter-pop" role="alert">
-                            {error}
-                        </p>
-                    )}
+                {error && (
+                    <p
+                        className="sw-hint sw-hint--error break-words text-center sw-enter-pop"
+                        role="alert"
+                    >
+                        {error}
+                    </p>
+                )}
 
-                    <Button type="submit" variant="primary" size="lg" block loading={loading}>
-                        {loading ? 'Creating account…' : 'Register'}
-                    </Button>
-                </form>
+                <Button type="submit" variant="primary" size="lg" block loading={loading}>
+                    {loading ? t('auth.creating') : t('auth.register')}
+                </Button>
+            </form>
 
-                <p className="mt-6 text-center text-sm text-muted">
-                    Already have an account?{' '}
-                    <Link to="/login" className="font-semibold text-accent no-underline hover:underline">
-                        Login
-                    </Link>
-                </p>
-            </Card>
-        </div>
+            <OAuthButtons />
+
+            <p className="mt-6 text-center text-sm text-muted">
+                {t('auth.alreadyAccount')}{' '}
+                <Link to="/login" className="font-semibold text-accent no-underline hover:underline">
+                    {t('auth.login')}
+                </Link>
+            </p>
+        </AuthLayout>
     );
 };
 

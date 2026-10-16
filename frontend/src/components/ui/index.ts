@@ -1,8 +1,8 @@
 /**
- * Barrel for the neumorphic primitives.
+ * Barrel for the glass primitives.
  *
- * Every component here is a thin, typed wrapper over the `.neu-*` classes in
- * `src/index.css`, so screens never hand-write shadows or colours.
+ * Every component here is a thin, typed wrapper over the `.sw-*` classes in
+ * `src/index.css`, so screens never hand-write surfaces, shadows or colours.
  */
 export { Button } from './Button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './Button';
@@ -18,3 +18,6 @@ export { Loader } from './Loader';
 export type { LoaderProps } from './Loader';
 export { AppShell, SidebarBrand, NavItem, SidebarFooter } from './AppShell';
 export type { AppShellProps, NavItemProps, SidebarBrandProps } from './AppShell';
+export { BrandMark, Wordmark } from './Brand';
+export type { BrandMarkSize } from './Brand';
+export * from './icons';

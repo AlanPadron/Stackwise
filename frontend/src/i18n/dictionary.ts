@@ -1,0 +1,347 @@
+/**
+ * UI copy, keyed by a flat dotted id. `en` is the source of truth: its keys
+ * define `TranslationKey`, and `es` is typed as a complete translation of it,
+ * so adding a string to one language without the other fails the build.
+ */
+
+export const LANGUAGES = ['en', 'es'] as const;
+export type Language = (typeof LANGUAGES)[number];
+
+/** Name of each language, always shown in that language. */
+export const LANGUAGE_LABEL: Record<Language, string> = {
+    en: 'English',
+    es: 'Español',
+};
+
+/** Compact form for the segmented switch, where space is tight. */
+export const LANGUAGE_SHORT: Record<Language, string> = {
+    en: 'EN',
+    es: 'ES',
+};
+
+/** BCP-47 tag used for `toLocaleDateString` and the document `lang`. */
+export const LANGUAGE_LOCALE: Record<Language, string> = {
+    en: 'en-US',
+    es: 'es-ES',
+};
+
+export const en = {
+    'brand.description':
+        'Stackwise is a multi-language code analysis platform that connects to software repositories to assess code quality, security, and complexity, transforming technical findings into clear, actionable insights.',
+
+    'nav.main': 'Main navigation',
+    'nav.dashboard': 'Dashboard',
+    'nav.projects': 'My Projects',
+    'nav.signOut': 'Sign Out',
+
+    'settings.open': 'Open settings',
+    'settings.title': 'Settings',
+    'settings.theme': 'Dark mode',
+    'settings.themeHint': 'Applies across the whole app',
+    'settings.language': 'Language',
+    'settings.contact': 'Contact',
+
+    'agent.open': 'Open NIom',
+    'agent.title': 'NIom',
+    'agent.name': 'NIom',
+    'agent.subtitle': 'Explains the findings of your analyzed code',
+    'agent.close': 'Close',
+    'agent.model': 'Model: {model}',
+    'agent.scopeProject': 'Context: the latest analysis of this project',
+    'agent.scopeNone': 'Open a project to explain its findings',
+    'agent.empty':
+        'Ask about a rule, a file or a severity. I quote the findings of the analysis in scope.',
+    'agent.placeholder': 'Ask about a finding…',
+    'agent.send': 'Send',
+    'agent.thinking': 'Reading the findings…',
+    'agent.you': 'You',
+    'agent.findingsUsed': '{count} findings in context',
+    'agent.truncated': 'more findings exist than fit in the context',
+    'agent.unavailable': "I can't read the findings yet: my model is not available on this server.",
+    'agent.error': "Something went wrong on my side — I couldn't answer that.",
+
+    'oauth.or': 'or',
+    'oauth.google': 'Google',
+    'oauth.github': 'GitHub',
+    'oauth.mock': 'Dev sign-in',
+    'oauth.continueWith': 'Continue with {provider}',
+    'oauth.failed': 'Could not start sign-in. Please try again.',
+    'oauth.signingIn': 'Signing you in…',
+    'oauth.errorState': 'This sign-in link is invalid or has expired. Please start again.',
+    'oauth.errorProvider': 'The provider could not confirm your account. Please try again.',
+    'oauth.errorLink': 'That account is already linked to a different user.',
+    'oauth.backToLogin': 'Back to sign in',
+    'oauth.notConfigured':
+        'Google and GitHub sign-in are not configured on this server — set GOOGLE_CLIENT_ID / GITHUB_CLIENT_ID in the API .env.',
+
+    'repos.title': 'Import from GitHub',
+    'repos.subtitle': 'Pick a repository and Stackwise analyzes it right away',
+    'repos.loading': 'Loading your repositories…',
+    'repos.connectTitle': 'Connect your GitHub account',
+    'repos.connectBody':
+        'Stackwise reads only the repositories you pick, using your own GitHub account. Nothing is shared with anyone else.',
+    'repos.connect': 'Connect GitHub',
+    'repos.connectedAs': 'Connected as @{login}',
+    'repos.search': 'Filter repositories',
+    'repos.empty': 'No repositories match your filter.',
+    'repos.private': 'Private',
+    'repos.public': 'Public',
+    'repos.import': 'Import and analyze',
+    'repos.importing': 'Importing…',
+    'repos.updated': 'Updated {date}',
+    'repos.count': '{count} repositories',
+    'repos.failed': 'Could not load your repositories.',
+    'repos.importFailed': 'Could not import that repository.',
+    'repos.scopeNote':
+        'The connection asks GitHub for read access to your repositories; Stackwise never writes to them.',
+
+    'auth.restoring': 'Restoring session…',
+    'auth.sessionUnreachable': 'Stackwise could not reach the API, so your session could not be checked. Your sign-in is still saved.',
+    'auth.welcomeBack': 'Welcome back',
+    'auth.signInSubtitle': 'Sign in to your Stackwise account',
+    'auth.email': 'Email',
+    'auth.password': 'Password',
+    'auth.confirmPassword': 'Confirm Password',
+    'auth.passwordHint': 'At least 8 characters',
+    'auth.signIn': 'Sign In',
+    'auth.signingIn': 'Signing in…',
+    'auth.noAccount': "Don't have an account?",
+    'auth.register': 'Register',
+    'auth.createAccount': 'Create account',
+    'auth.registerSubtitle': 'Get started with Stackwise analysis',
+    'auth.creating': 'Creating account…',
+    'auth.alreadyAccount': 'Already have an account?',
+    'auth.login': 'Login',
+    'auth.passwordsDoNotMatch': 'Passwords do not match',
+    'auth.failed': 'Authentication failed',
+    'auth.registerFailed': 'Registration failed. Please try a different email.',
+
+    'dashboard.title': 'Overview',
+    'dashboard.subtitle': 'Your analysis activity at a glance',
+    'dashboard.newProject': '+ New Project',
+    'dashboard.statProjects': 'Total Projects',
+    'dashboard.statAnalyses': 'Analyses Run',
+    'dashboard.statCompleted': 'Completed',
+    'dashboard.statFindings': 'Total Findings',
+    'dashboard.myProjects': 'My Projects',
+    'dashboard.loading': 'Loading dashboard…',
+    'dashboard.loadFailed': 'Your overview could not be loaded. Check your connection and try again.',
+
+    'projects.title': 'My Projects',
+    'projects.subtitle': 'Every repository you have set up for analysis',
+    'projects.allProjects': 'All Projects',
+    'projects.loading': 'Loading projects…',
+    'projects.loadFailed': 'Your projects could not be loaded. Check your connection and try again.',
+    'projects.empty': 'No projects found. Start by creating one!',
+    'projects.colName': 'Project Name',
+    'projects.colCreated': 'Created',
+    'projects.colAction': 'Action',
+    'projects.viewDetails': 'View Details',
+
+    'newProject.title': 'Create Project',
+    'newProject.subtitle': 'Set up a new repository for analysis',
+    'newProject.name': 'Project Name',
+    'newProject.namePlaceholder': 'e.g. My Awesome Python App',
+    'newProject.description': 'Description (Optional)',
+    'newProject.descriptionPlaceholder': 'What is this project about?',
+    'newProject.cancel': 'Cancel',
+    'newProject.create': 'Create Project',
+    'newProject.creating': 'Creating…',
+    'newProject.failed': 'Failed to create project',
+    'newProject.orImport': 'Or import a repository from GitHub',
+
+    'project.sourceZip': 'ZIP',
+    'project.sourceGitHub': 'GitHub',
+
+    'project.loading': 'Loading project…',
+    'project.notFound': 'Project not found',
+    'project.noDescription': 'No description provided',
+    'project.selectZip': 'Select ZIP',
+    'project.runAnalysis': 'Run Analysis',
+    'project.uploadFailed': 'Upload failed',
+    'project.history': 'Analysis History',
+    'project.noAnalyses': 'No analyses performed yet.',
+    'project.run': 'Run',
+    'project.findings': 'Findings',
+    'project.selectRun': 'Select an analysis run from the history to view results',
+    'project.findingsFor': 'Findings for {id}',
+    'project.findingsCount': 'Findings: {count}',
+    'project.noFindings': 'No findings detected! Your code is clean ✨',
+    'project.file': 'File',
+    'project.line': 'Line',
+
+    'nav.open': 'Open navigation menu',
+    'nav.close': 'Close navigation menu',
+    'a11y.skipToContent': 'Skip to content',
+
+    'common.retry': 'Retry',
+
+    'pwa.offline': "You're offline. Analyses, findings and the chat need the backend.",
+    'pwa.updateReady': 'A new version of Stackwise is available.',
+    'pwa.update': 'Reload',
+    'pwa.later': 'Not now',
+} as const;
+
+export type TranslationKey = keyof typeof en;
+
+export const es: Record<TranslationKey, string> = {
+    'brand.description':
+        'Stackwise es una plataforma de análisis de código multilenguaje que se conecta a repositorios de software para evaluar la calidad, la seguridad y la complejidad del código, transformando los hallazgos técnicos en información clara y accionable.',
+
+    'nav.main': 'Navegación principal',
+    'nav.dashboard': 'Panel',
+    'nav.projects': 'Mis proyectos',
+    'nav.signOut': 'Cerrar sesión',
+
+    'settings.open': 'Abrir ajustes',
+    'settings.title': 'Ajustes',
+    'settings.theme': 'Modo oscuro',
+    'settings.themeHint': 'Se aplica en toda la app',
+    'settings.language': 'Idioma',
+    'settings.contact': 'Contacto',
+
+    'agent.open': 'Abrir NIom',
+    'agent.title': 'NIom',
+    'agent.name': 'NIom',
+    'agent.subtitle': 'Explica los hallazgos de tu código analizado',
+    'agent.close': 'Cerrar',
+    'agent.model': 'Modelo: {model}',
+    'agent.scopeProject': 'Contexto: el último análisis de este proyecto',
+    'agent.scopeNone': 'Abre un proyecto para explicar sus hallazgos',
+    'agent.empty':
+        'Pregunta por una regla, un archivo o una severidad. Cito los hallazgos del análisis en contexto.',
+    'agent.placeholder': 'Pregunta sobre un hallazgo…',
+    'agent.send': 'Enviar',
+    'agent.thinking': 'Leyendo los hallazgos…',
+    'agent.you': 'Tú',
+    'agent.findingsUsed': '{count} hallazgos en contexto',
+    'agent.truncated': 'hay más hallazgos de los que caben en el contexto',
+    'agent.unavailable': 'Todavía no puedo leer los hallazgos: mi modelo no está disponible en este servidor.',
+    'agent.error': 'Algo ha fallado de mi lado: no he podido responder a eso.',
+
+    'oauth.or': 'o',
+    'oauth.google': 'Google',
+    'oauth.github': 'GitHub',
+    'oauth.mock': 'Acceso de desarrollo',
+    'oauth.continueWith': 'Continuar con {provider}',
+    'oauth.failed': 'No se pudo iniciar el acceso. Inténtalo de nuevo.',
+    'oauth.signingIn': 'Iniciando tu sesión…',
+    'oauth.errorState': 'Este enlace de acceso no es válido o ha caducado. Vuelve a intentarlo.',
+    'oauth.errorProvider': 'El proveedor no pudo confirmar tu cuenta. Inténtalo de nuevo.',
+    'oauth.errorLink': 'Esa cuenta ya está vinculada a otro usuario.',
+    'oauth.backToLogin': 'Volver al inicio de sesión',
+    'oauth.notConfigured':
+        'El acceso con Google y GitHub no está configurado en este servidor: define GOOGLE_CLIENT_ID / GITHUB_CLIENT_ID en el .env de la API.',
+
+    'repos.title': 'Importar desde GitHub',
+    'repos.subtitle': 'Elige un repositorio y Stackwise lo analiza al momento',
+    'repos.loading': 'Cargando tus repositorios…',
+    'repos.connectTitle': 'Conecta tu cuenta de GitHub',
+    'repos.connectBody':
+        'Stackwise lee solo los repositorios que elijas, con tu propia cuenta de GitHub. No se comparte nada con nadie más.',
+    'repos.connect': 'Conectar GitHub',
+    'repos.connectedAs': 'Conectado como @{login}',
+    'repos.search': 'Filtrar repositorios',
+    'repos.empty': 'Ningún repositorio coincide con el filtro.',
+    'repos.private': 'Privado',
+    'repos.public': 'Público',
+    'repos.import': 'Importar y analizar',
+    'repos.importing': 'Importando…',
+    'repos.updated': 'Actualizado {date}',
+    'repos.count': '{count} repositorios',
+    'repos.failed': 'No se pudieron cargar tus repositorios.',
+    'repos.importFailed': 'No se pudo importar ese repositorio.',
+    'repos.scopeNote':
+        'La conexión pide a GitHub acceso de solo lectura a tus repositorios; Stackwise nunca escribe en ellos.',
+
+    'auth.restoring': 'Restaurando la sesión…',
+    'auth.sessionUnreachable': 'Stackwise no pudo contactar con el API, así que no se pudo comprobar tu sesión. Tu inicio de sesión sigue guardado.',
+    'auth.welcomeBack': 'Bienvenido de nuevo',
+    'auth.signInSubtitle': 'Inicia sesión en tu cuenta de Stackwise',
+    'auth.email': 'Correo electrónico',
+    'auth.password': 'Contraseña',
+    'auth.confirmPassword': 'Confirmar contraseña',
+    'auth.passwordHint': 'Mínimo 8 caracteres',
+    'auth.signIn': 'Iniciar sesión',
+    'auth.signingIn': 'Iniciando sesión…',
+    'auth.noAccount': '¿No tienes una cuenta?',
+    'auth.register': 'Regístrate',
+    'auth.createAccount': 'Crear cuenta',
+    'auth.registerSubtitle': 'Empieza a analizar con Stackwise',
+    'auth.creating': 'Creando cuenta…',
+    'auth.alreadyAccount': '¿Ya tienes una cuenta?',
+    'auth.login': 'Inicia sesión',
+    'auth.passwordsDoNotMatch': 'Las contraseñas no coinciden',
+    'auth.failed': 'Error de autenticación',
+    'auth.registerFailed': 'No se pudo completar el registro. Prueba con otro correo.',
+
+    'dashboard.title': 'Resumen',
+    'dashboard.subtitle': 'Tu actividad de análisis de un vistazo',
+    'dashboard.newProject': '+ Nuevo proyecto',
+    'dashboard.statProjects': 'Proyectos totales',
+    'dashboard.statAnalyses': 'Análisis ejecutados',
+    'dashboard.statCompleted': 'Completados',
+    'dashboard.statFindings': 'Hallazgos totales',
+    'dashboard.myProjects': 'Mis proyectos',
+    'dashboard.loading': 'Cargando el panel…',
+    'dashboard.loadFailed': 'No se pudo cargar el resumen. Comprueba la conexión e inténtalo de nuevo.',
+
+    'projects.title': 'Mis proyectos',
+    'projects.subtitle': 'Todos los repositorios que has configurado para analizar',
+    'projects.allProjects': 'Todos los proyectos',
+    'projects.loading': 'Cargando proyectos…',
+    'projects.loadFailed': 'No se pudieron cargar tus proyectos. Comprueba la conexión e inténtalo de nuevo.',
+    'projects.empty': 'No hay proyectos. ¡Crea el primero!',
+    'projects.colName': 'Nombre del proyecto',
+    'projects.colCreated': 'Creado',
+    'projects.colAction': 'Acción',
+    'projects.viewDetails': 'Ver detalles',
+
+    'newProject.title': 'Crear proyecto',
+    'newProject.subtitle': 'Configura un nuevo repositorio para analizar',
+    'newProject.name': 'Nombre del proyecto',
+    'newProject.namePlaceholder': 'p. ej. Mi gran app en Python',
+    'newProject.description': 'Descripción (opcional)',
+    'newProject.descriptionPlaceholder': '¿De qué trata este proyecto?',
+    'newProject.cancel': 'Cancelar',
+    'newProject.create': 'Crear proyecto',
+    'newProject.creating': 'Creando…',
+    'newProject.failed': 'No se pudo crear el proyecto',
+    'newProject.orImport': 'O importa un repositorio desde GitHub',
+
+    'project.sourceZip': 'ZIP',
+    'project.sourceGitHub': 'GitHub',
+
+    'project.loading': 'Cargando el proyecto…',
+    'project.notFound': 'Proyecto no encontrado',
+    'project.noDescription': 'Sin descripción',
+    'project.selectZip': 'Seleccionar ZIP',
+    'project.runAnalysis': 'Ejecutar análisis',
+    'project.uploadFailed': 'La subida falló',
+    'project.history': 'Historial de análisis',
+    'project.noAnalyses': 'Todavía no hay análisis.',
+    'project.run': 'Ejecución',
+    'project.findings': 'Hallazgos',
+    'project.selectRun': 'Selecciona una ejecución del historial para ver los resultados',
+    'project.findingsFor': 'Hallazgos de {id}',
+    'project.findingsCount': 'Hallazgos: {count}',
+    'project.noFindings': '¡No se detectaron hallazgos! Tu código está limpio ✨',
+    'project.file': 'Archivo',
+    'project.line': 'Línea',
+
+    'nav.open': 'Abrir el menú de navegación',
+    'nav.close': 'Cerrar el menú de navegación',
+    'a11y.skipToContent': 'Saltar al contenido',
+
+    'common.retry': 'Reintentar',
+
+    'pwa.offline': 'Sin conexión. Los análisis, los hallazgos y el chat necesitan el backend.',
+    'pwa.updateReady': 'Hay una versión nueva de Stackwise disponible.',
+    'pwa.update': 'Recargar',
+    'pwa.later': 'Ahora no',
+};
+
+export const dictionary: Record<Language, Record<TranslationKey, string>> = {
+    en,
+    es,
+};

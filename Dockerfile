@@ -7,11 +7,11 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# ruff/bandit/radon are pinned in requirements.txt and installed with everything
+# else: the analysis engine records the analyzer versions it executed, so they
+# must not be installed a second time unpinned.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install analysis tools globally
-RUN pip install ruff bandit radon
 
 COPY . .
 

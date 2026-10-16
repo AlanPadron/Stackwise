@@ -1,16 +1,26 @@
+"""Aggregated counters for the dashboard screen (one round trip instead of four).
+
+The counters are computed with SQL aggregates rather than by loading every run
+and finding of the user, so the cost stays flat as a user accumulates analyses.
+`findings_by_severity` always carries the full canonical severity scale, with
+zeros where nothing was found — a stable shape for the SPA.
+"""
+
+from typing import Optional
+
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import func
-from app.db.session import get_db
-from app.models.user import User
-from app.models.project import Project
-from app.models.analysis import AnalysisRun, Finding
-from app.api.deps import get_current_user_email
 from pydantic import BaseModel
-from typing import Any, Optional
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.db.session import get_db
+from app.models.analysis import SEVERITIES, AnalysisRun, Finding
+from app.models.project import Project
+from app.models.user import User
 
 router = APIRouter()
+
 
 class DashboardSummary(BaseModel):
     total_projects: int
@@ -20,53 +30,57 @@ class DashboardSummary(BaseModel):
     findings_by_severity: dict[str, int]
     last_analysis_status: Optional[str] = None
 
+
 @router.get("/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(
-    email: str = Depends(get_current_user_email),
-    db: AsyncSession = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    # 1. Get User
-    user_res = await db.execute(select(User).where(User.email == email))
-    user = user_res.scalar_one_or_none()
+    owned_projects = select(Project.id).where(Project.owner_id == user.id)
 
-    # 2. Total Projects
-    proj_res = await db.execute(select(func.count(Project.id)).where(Project.owner_id == user.id))
-    total_projects = proj_res.scalar() or 0
+    total_projects = (
+        await db.execute(select(func.count(Project.id)).where(Project.owner_id == user.id))
+    ).scalar() or 0
 
-    # 3. Total & Completed Analyses
-    anal_res = await db.execute(select(AnalysisRun).where(AnalysisRun.project_id.in_(
-        select(Project.id).where(Project.owner_id == user.id)
-    )))
-    analyses = anal_res.scalars().all()
-    total_analyses = len(analyses)
-    completed_analyses = len([a for a in analyses if a.status == "completed"])
-
-    # 4. Total Findings & Severities
-    # We use a join to get all findings for all projects of this user
-    find_res = await db.execute(
-        select(Finding).join(AnalysisRun).join(Project).where(Project.owner_id == user.id)
+    status_counts = dict(
+        (
+            await db.execute(
+                select(AnalysisRun.status, func.count(AnalysisRun.id))
+                .where(AnalysisRun.project_id.in_(owned_projects))
+                .group_by(AnalysisRun.status)
+            )
+        ).all()
     )
-    findings = find_res.scalars().all()
-    total_findings = len(findings)
+    total_analyses = sum(status_counts.values())
+    # A run that finished with degraded analyzers still completed its work.
+    completed = status_counts.get("completed", 0) + status_counts.get("completed_with_errors", 0)
 
-    severities = {"high": 0, "medium": 0, "low": 0}
-    for f in findings:
-        sev = f.severity.lower()
-        if sev in severities:
-            severities[sev] += 1
+    severity_rows = (
+        await db.execute(
+            select(Finding.severity, func.count(Finding.id))
+            .join(Project, Finding.project_id == Project.id)
+            .where(Project.owner_id == user.id)
+            .group_by(Finding.severity)
+        )
+    ).all()
+    by_severity = {severity: 0 for severity in SEVERITIES}
+    for severity, count in severity_rows:
+        by_severity[str(severity).lower()] = by_severity.get(str(severity).lower(), 0) + count
 
-    # 5. Last Analysis Status
-    last_status = None
-    if analyses:
-        # Sort by created_at descending
-        sorted_anal = sorted(analyses, key=lambda x: x.created_at, reverse=True)
-        last_status = sorted_anal[0].status
+    last_status = (
+        await db.execute(
+            select(AnalysisRun.status)
+            .where(AnalysisRun.project_id.in_(owned_projects))
+            .order_by(AnalysisRun.created_at.desc(), AnalysisRun.id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
 
     return DashboardSummary(
         total_projects=total_projects,
         total_analyses=total_analyses,
-        completed_analyses=completed_analyses,
-        total_findings=total_findings,
-        findings_by_severity=severities,
-        last_analysis_status=last_status
+        completed_analyses=completed,
+        total_findings=sum(by_severity.values()),
+        findings_by_severity=by_severity,
+        last_analysis_status=last_status,
     )
