@@ -1,0 +1,34 @@
+# Render blueprint for the FastAPI backend. Netlify hosts the SPA (netlify.toml).
+# Auto-deploy: every push to the connected branch rebuilds this service.
+#
+# Values marked `sync: false` are secrets or per-deployment URLs: Render asks for
+# them once in the dashboard and never stores them in this file.
+
+services:
+  - type: web
+    name: stackwise-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      # Async driver URL used at runtime and by alembic (must be postgresql+asyncpg://).
+      - key: SQLALCHEMY_URL
+        sync: false
+      # Exact Netlify origin, JSON list, e.g. ["https://<site>.netlify.app"].
+      # Never "*": browsers reject it with credentials and the README forbids it.
+      - key: CORS_ORIGINS
+        sync: false
+      # Where OAuth returns the browser, e.g. https://<site>.netlify.app
+      - key: FRONTEND_URL
+        sync: false
+      - key: API_PUBLIC_URL
+        value: https://stackwise-api.onrender.com
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+
+databases:
+  - name: stackwise-db

@@ -1,0 +1,9 @@
+[build]
+  # The SPA lives in frontend/; the repo root has no package.json or index.html.
+  command = "cd frontend && npm ci && npm run build"
+  publish = "frontend/dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+  # Backend service name in render.yaml. Build-time: Vite inlines it into the bundle.
+  VITE_API_URL = "https://stackwise-api.onrender.com/api/v1"
