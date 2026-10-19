@@ -414,10 +414,10 @@ PostgreSQL about what deleting a project means.
 Running on PostgreSQL, Supabase included: install the async driver (`asyncpg`,
 already in `requirements.txt`) and set
 `SQLALCHEMY_URL=postgresql+asyncpg://<user>:<password>@<host>:5432/<db>?ssl=require`.
-`DATABASE_URL` keeps the synchronous spelling for Alembic and docker-compose, and
-`alembic/env.py` translates between the two. Two portability notes, both by
-design rather than oversight: the JSON columns are generic `JSON`, not `JSONB`
-(so no JSON operators or GIN indexes), and the timestamps are naive `DateTime`
+`alembic/env.py` translates that URL to its synchronous equivalent (psycopg2), so the app and its
+migrations always target the same database and there is no second connection string to keep in step.
+Two portability notes, both by design rather than oversight: the JSON columns are generic `JSON`, not
+`JSONB` (so no JSON operators or GIN indexes), and the timestamps are naive `DateTime`
 values defaulted in Python, which PostgreSQL stores as `TIMESTAMP WITHOUT TIME
 ZONE`.
 

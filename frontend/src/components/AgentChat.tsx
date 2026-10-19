@@ -73,7 +73,7 @@ const ACTIVITY_MS = 1000;
  * the nap — after a minute of nothing while the panel is open, it falls asleep,
  * and any interaction wakes it with a pose rather than a jolt.
  */
-export const AgentChat: React.FC = () => {
+export const AgentChat: React.FC<{ hidden?: boolean }> = ({ hidden = false }) => {
     const { t } = useI18n();
     const location = useLocation();
     const [open, setOpen] = useState(false);
@@ -348,11 +348,18 @@ export const AgentChat: React.FC = () => {
     return (
         <div
             ref={containerRef}
-            // 8.75rem = the settings cluster (48px tall, bottom 5rem) plus its 12px
-            // gap, so the two stacks keep the same rhythm instead of overlapping.
-            // Both clear the Netlify badge in the bottom-right corner. The
-            // safe-area term keeps that rhythm on a phone with a home indicator.
-            className="fixed bottom-[calc(8.75rem+env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))] z-40 flex flex-col items-end gap-3"
+            className={cx(
+                // 8.75rem = the settings cluster (48px tall, bottom 5rem) plus its
+                // 12px gap, so the two stacks keep the same rhythm instead of
+                // overlapping. Both clear the Netlify badge in the bottom-right
+                // corner. The safe-area term keeps that rhythm on a phone with a
+                // home indicator.
+                'fixed bottom-[calc(8.75rem+env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))] z-40 flex flex-col items-end gap-3',
+                // The open settings drawer occupies exactly that slot and grows
+                // upwards through the robot. Visually hidden — not unmounted, so
+                // the conversation survives the drawer being opened.
+                hidden && 'invisible pointer-events-none'
+            )}
         >
             {open && (
                 <div

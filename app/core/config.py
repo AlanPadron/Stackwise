@@ -1,26 +1,43 @@
 """Runtime configuration, read from environment variables / `.env`.
 
 `SECRET_KEY` has no default on purpose: the app refuses to start rather than run
-with an insecure key. See `.env.example` for the full set.
+with an insecure key, and the value must be at least 32 characters and not the
+`.env.example` placeholder. See `.env.example` for the full set.
 
 The `ANALYSIS_*` block is the *platform ceiling* for the analysis engine: a
 project-level analysis configuration (see `app/analysis/config.py`) may only
 narrow these values, never widen them. Keep that rule when adding a setting.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Literal
 
+#: Exactly the value `.env.example` ships. Copying the template without editing
+#: it must not produce a running deployment with a key everyone has read.
+_PLACEHOLDER_SECRET_KEYS = frozenset(
+    {
+        "your-super-secret-key-change-me-in-production",
+        "change-me",
+        "changeme",
+    }
+)
+
+
 class Settings(BaseSettings):
+    # A `.env` written for an older release may still carry `DATABASE_URL` and
+    # other retired names; they are ignored rather than fatal. Unknown names in
+    # a process environment are likewise ignored, as they always were.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     PROJECT_NAME: str = "Stackwise"
     API_V1_STR: str = "/api/v1"
     # Release tag: keep in sync with `frontend/package.json` and
     # `frontend/src/config.ts` (the version badge).
     APP_VERSION: str = "1.8.0-alpha"
 
-    # Deployment database. Present for docker-compose/Vercel parity; the async
-    # engine below connects through `SQLALCHEMY_URL` (see app/db/session.py).
-    DATABASE_URL: str = "postgresql://postgres:postgres@db:5432/stackwise"
+    # The async engine connects through `SQLALCHEMY_URL` (see app/db/session.py);
+    # Alembic derives the synchronous driver from that same URL.
     SQLALCHEMY_URL: str = "sqlite+aiosqlite:///./stackwise.db"
     # Log every SQL statement (development only).
     SQLALCHEMY_ECHO: bool = False
@@ -34,6 +51,25 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     CORS_ORIGINS: List[str] = ["*"]
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def _validate_secret_key(cls, value: str) -> str:
+        """Refuse a missing, short or copy-pasted signing key.
+
+        The class docstring's promise only holds if the value is checked: a
+        present-but-guessable key signs every session token just as badly as no
+        key at all. 32 characters is the floor, not a recommendation.
+        """
+        key = value.strip()
+        if len(key) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters long")
+        if key.lower() in _PLACEHOLDER_SECRET_KEYS:
+            raise ValueError(
+                "SECRET_KEY must not be the .env.example placeholder; "
+                'generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"`'
+            )
+        return key
 
     # --- accounts: sign-in hardening -----------------------------------------
     # Attempts accepted per minute and per client address. Registration bounds
@@ -164,7 +200,5 @@ class Settings(BaseSettings):
     # Catalogue id, not a Hugging Face one: `@cf/<vendor>/<model>`.
     CLOUDFLARE_MODEL_ID: str = "@cf/qwen/qwen2.5-coder-32b-instruct"
 
-    class Config:
-        env_file = ".env"
 
 settings = Settings()

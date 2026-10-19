@@ -40,6 +40,9 @@ const AppContent: React.FC = () => {
     const [showSplash, setShowSplash] = useState(
         () => sessionStorage.getItem(SPLASH_SESSION_KEY) !== '1'
     );
+    // The two floating clusters share one corner: while the settings drawer is
+    // open it owns that space, so the NIom button steps out of its way.
+    const [settingsOpen, setSettingsOpen] = useState(false);
 
     const finishSplash = () => {
         sessionStorage.setItem(SPLASH_SESSION_KEY, '1');
@@ -49,9 +52,9 @@ const AppContent: React.FC = () => {
     return (
         <SplashContext.Provider value={() => setShowSplash(true)}>
             <PwaStatus />
-            <SettingsMenu />
+            <SettingsMenu open={settingsOpen} onOpenChange={setSettingsOpen} />
             {/* The findings agent is an account feature: no session, no button. */}
-            {isAuthenticated && <AgentChat />}
+            {isAuthenticated && <AgentChat hidden={settingsOpen} />}
             <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />

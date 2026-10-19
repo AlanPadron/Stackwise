@@ -33,6 +33,20 @@ if settings.DEV_OAUTH_MOCK:
     )
 
 
+def warn_about_insecure_defaults() -> None:
+    """Name the development defaults that must not reach a public host.
+
+    `DEV_OAUTH_MOCK` warns when it is enabled (see module top). The wildcard CORS
+    origin is the other one: it is convenient in development and, with
+    `allow_credentials=True`, it is also not a valid production configuration.
+    """
+    if "*" in settings.CORS_ORIGINS:
+        logger.warning(
+            "CORS_ORIGINS allows every origin; set the SPA origin "
+            "(for example [\"https://app.example.com\"]) before exposing this API"
+        )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Recover runs abandoned by a previous worker process, then serve.
@@ -41,6 +55,7 @@ async def lifespan(_: FastAPI):
     `reap_stale_runs` moves it to `failed` with `error_category=stale_run`.
     """
     warn_about_the_findings_agent()
+    warn_about_insecure_defaults()
     async with AsyncSessionLocal() as session:
         try:
             reaped = await AnalysisStatusService(session).reap_stale_runs(grace_seconds=0)

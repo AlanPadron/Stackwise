@@ -93,7 +93,7 @@ python -m venv venv
 source venv/bin/activate                 # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env                     # then edit it — see step 3
+cp .env.example .env                     # then replace SECRET_KEY — see step 3
 python init_db.py                        # creates the tables in ./stackwise.db
 uvicorn app.main:app --reload --port 8001
 ```
@@ -544,7 +544,7 @@ truth and `.env.example` lists every name.
 |---|---|
 | Runtime | `API_V1_STR`, `APP_VERSION`, `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `CORS_ORIGINS` |
 | Accounts | `AUTH_REGISTER_RATE_LIMIT_PER_MINUTE`, `AUTH_LOGIN_RATE_LIMIT_PER_MINUTE` — the password policy itself is not configurable (see [Security notes](#security-notes)) |
-| Database | `SQLALCHEMY_URL` (async driver), `DATABASE_URL`, `SQLALCHEMY_ECHO`, `SQLALCHEMY_POOL_MODE` (how a hosted pooler is treated) |
+| Database | `SQLALCHEMY_URL` (async driver; Alembic derives the sync one), `SQLALCHEMY_ECHO`, `SQLALCHEMY_POOL_MODE` (how a hosted pooler is treated) |
 | Public origins | `API_PUBLIC_URL` (builds provider redirect URIs), `FRONTEND_URL` (where OAuth returns the browser) |
 | Providers | `GOOGLE_CLIENT_ID`/`_SECRET`, `GITHUB_CLIENT_ID`/`_SECRET`, `GITHUB_API_BASE_URL`, `OAUTH_STATE_EXPIRE_MINUTES` — an empty pair disables that provider |
 | Analysis ceiling | `ANALYSIS_ENABLED_ANALYZERS`, `ANALYSIS_RUFF_SELECT`, per-tool timeouts, complexity/maintainability thresholds |
@@ -634,13 +634,12 @@ static directory — plus a database.
 ### 1. Database
 
 Either the SQLite file (fine for a single always-on container, not for a fleet) or PostgreSQL. For
-**Supabase**: take the connection string from the dashboard and set both spellings, because Alembic
-migrates through the synchronous one:
+**Supabase**, take the async connection string from the dashboard and set `SQLALCHEMY_URL`. Alembic
+translates that same URL to its synchronous driver, so there is no second spelling to configure:
 
 ```dotenv
 # Session pooler (5432) — a server connection per client:
 SQLALCHEMY_URL=postgresql+asyncpg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?ssl=require
-DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 
 # Transaction pooler (6543) — the app detects the port and disables the prepared
 # statement caches a transaction pooler cannot honour; nothing else to set:
@@ -667,6 +666,9 @@ alembic upgrade head
 `alembic/env.py` reads `SQLALCHEMY_URL` (or `ALEMBIC_DATABASE_URL` to override it) and translates the
 async driver to its synchronous equivalent, so a migration always targets the database the app talks
 to. Nothing is created twice: the baseline revision is the only one, and it matches the models.
+Stackwise never uses the Supabase SDK or its publishable/service keys: the FastAPI process is the only
+database client, it authorises every row itself, and Supabase RLS is therefore not part of the access
+model. Keep any Supabase key out of Netlify and out of the SPA.
 
 ### 2. Backend
 
@@ -683,7 +685,10 @@ or without Docker:
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-`docker-compose.yml` runs the same app beside a development PostgreSQL, for a local end-to-end check. It reads `SECRET_KEY` and `POSTGRES_PASSWORD` from `.env` and refuses to start when either is missing; no secret is hard-coded.
+`docker-compose.yml` runs the same app beside a development PostgreSQL, for a local end-to-end check:
+the API and its `alembic upgrade head` both connect to the `db` service, and the app waits for the
+database health check before starting. It reads `SECRET_KEY` and `POSTGRES_PASSWORD` from `.env` and
+refuses to start when either is missing; no secret is hard-coded.
 
 Two things a host must provide: a filesystem that is writable while a run is executing (the engine
 extracts to a temp workspace and deletes it afterwards) and, if the container is small, enough memory
@@ -714,9 +719,9 @@ CORS configuration entirely.
 
 | Variable | Why |
 |---|---|
-| `SECRET_KEY` | required; the app will not start without it |
+| `SECRET_KEY` | required, at least 32 characters; the `.env.example` placeholder is refused |
 | `POSTGRES_PASSWORD` | required by `docker-compose.yml` for the bundled database; compose refuses to start without it |
-| `SQLALCHEMY_URL` / `DATABASE_URL` | the deployed database (see above) |
+| `SQLALCHEMY_URL` | the deployed database (async driver; Alembic derives the sync one) |
 | `CORS_ORIGINS` | **must** be the SPA's origin, not the default `["*"]` |
 | `API_PUBLIC_URL`, `FRONTEND_URL` | the provider redirect URIs are built from the first and the browser is returned to the second |
 | `GOOGLE_CLIENT_ID` / `_SECRET`, `GITHUB_CLIENT_ID` / `_SECRET` | optional; an empty pair simply disables that provider in the UI (see [OAuth sign-in](#oauth-sign-in-google-github)) |

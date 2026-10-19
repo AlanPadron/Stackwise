@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { CONTACT_EMAIL, CONTACT_MAILTO } from '../config';
 import { useTheme } from '../context/ThemeContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -29,12 +29,17 @@ const Row: React.FC<RowProps> = ({ icon, label, hint, trailing }) => (
     </div>
 );
 
+interface SettingsMenuProps {
+    /** Owned by the app shell so the NIom cluster can step aside while open. */
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}
+
 /**
  * Single floating control for the three global preferences — appearance,
  * language and contact — so the chrome stays out of the way of the content.
  */
-export const SettingsMenu: React.FC = () => {
-    const [open, setOpen] = useState(false);
+export const SettingsMenu: React.FC<SettingsMenuProps> = ({ open, onOpenChange }) => {
     const { theme, toggleTheme } = useTheme();
     const { lang, setLang, t } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -44,17 +49,17 @@ export const SettingsMenu: React.FC = () => {
     useEffect(() => {
         if (!open) return;
         const onPointerDown = (event: PointerEvent) => {
-            if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+            if (!containerRef.current?.contains(event.target as Node)) onOpenChange(false);
         };
         document.addEventListener('pointerdown', onPointerDown);
         return () => {
             document.removeEventListener('pointerdown', onPointerDown);
         };
-    }, [open]);
+    }, [open, onOpenChange]);
 
     // Tab stays inside the open panel and Escape closes it, handing the focus
     // back to the button that opened it.
-    useFocusTrap(open, panel, () => setOpen(false));
+    useFocusTrap(open, panel, () => onOpenChange(false));
 
     return (
         <div
@@ -145,7 +150,7 @@ export const SettingsMenu: React.FC = () => {
 
             <button
                 type="button"
-                onClick={() => setOpen((value) => !value)}
+                onClick={() => onOpenChange(!open)}
                 className="sw-fab"
                 aria-expanded={open}
                 aria-haspopup="dialog"

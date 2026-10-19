@@ -1,4 +1,3 @@
-version: '3.8'
 
 # Secrets come from the environment (or a local .env, which is git-ignored).
 # Compose refuses to start when a required value is missing, so no deployment
@@ -15,22 +14,28 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # The app's CMD runs `alembic upgrade head` before uvicorn; without this the
+    # migration can race the server's first boot and the container exits.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stackwise"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   app:
     build: .
     ports:
       - "8000:8000"
     environment:
-      # DATABASE_URL is the deployment's sync URL. The backend connects with
-      # SQLALCHEMY_URL; point it at the "db" service (and add asyncpg to the image)
-      # to run on Postgres instead of the container's SQLite file:
-      #   SQLALCHEMY_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/stackwise
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/stackwise
+      # The app and `alembic upgrade head` both read this one async URL; Alembic
+      # derives the synchronous driver itself. `asyncpg` is already in the image.
+      - SQLALCHEMY_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/stackwise
       - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY in .env}
       - ACCESS_TOKEN_EXPIRE_MINUTES=60
       - CORS_ORIGINS=["*"]
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:

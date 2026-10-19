@@ -28,7 +28,6 @@ _TEMP_ROOT = pathlib.Path(tempfile.mkdtemp(prefix="stackwise_tests_"))
 os.environ["SQLALCHEMY_URL"] = f"sqlite+aiosqlite:///{_TEMP_ROOT / 'test.db'}"
 os.environ["SQLALCHEMY_ECHO"] = "false"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost/stackwise_test")
 os.environ["DEV_OAUTH_MOCK"] = "false"
 
 # The session fixture below cleans this up too; `atexit` is the backstop for an

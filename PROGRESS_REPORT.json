@@ -1,10 +1,10 @@
 {
   "project": "StackWise Main",
   "report_version": "1.0",
-  "last_updated": "2026-10-16T18:40:00Z",
+  "last_updated": "2026-10-19T18:59:23Z",
   "overall_status": "completed_with_manual_steps_pending",
-  "current_phase": "release_1.6.0-alpha",
-  "summary": "Auditoria, correccion, integracion y verificacion de la copia local de StackWise Main. El stack real es un backend FastAPI async (SQLAlchemy 2 + Alembic) sobre SQLite por defecto con PostgreSQL/Supabase previsto, un motor de analisis propio (ruff/bandit/radon en subproceso) y un agente de hallazgos detras de una interfaz AgentBackend; el frontend es React 18 + Vite + Tailwind con sistema de tokens propio, i18n EN/ES y ahora PWA instalable y layout movil. Linea base antes de tocar nada: 229 tests en verde; despues: 260 en verde (31 nuevos). Cambios principales: (1) Cloudflare Workers AI integrado como segundo runtime del agente con el modelo de referencia @cf/qwen/qwen2.5-coder-32b-instruct, verificado contra la API real hasta la autenticacion; (2) asyncpg declarado y PRAGMA foreign_keys=ON en SQLite, que corrige filas huerfanas en rollbacks; (3) frontend adaptado a movil (sidebar -> drawer, objetivos tactiles de 44px, safe areas, tablas con scroll interno) y convertido en PWA instalable (manifiesto, iconos, service worker que nunca cachea /api/, aviso de actualizacion y aviso de sin conexion); (4) estados de error honestos en dashboard/proyectos y en la comprobacion de sesion, que antes se tragaban los fallos y mostraban datos vacios o cerraban la sesion; (5) README reescrito como guia real del proyecto, .env.example y docs secundarios actualizados, y este informe. Ademas, el chat del agente ahora transmite la respuesta por SSE y NIom tiene cuerpo: una mascota robot en SVG+CSS cuya maquina de estados esta atada al estado real de la peticion (atento, pensando, escribiendo con portatil, exito, error, saludo al enviar). Verificado en navegador real (Chromium headless) el build de produccion: manifiesto e iconos servidos, service worker activado, shell cargada sin conexion, /api nunca cacheada, banner de actualizacion tras simular un despliegue, drawer con foco atrapado, y 320/768/1440 sin desbordamiento horizontal. No se ha hecho git push ni ningun despliegue.",
+  "current_phase": "audit_1.8.0-alpha_local",
+  "summary": "Auditoria local de StackWise 1.8.0-alpha sobre el estado real del repositorio: backend FastAPI async (SQLAlchemy 2 + Alembic) con SQLite por defecto y PostgreSQL/Supabase mediante SQLALCHEMY_URL, motor de analisis propio (ruff/bandit/radon en subproceso), agente de hallazgos con dos runtimes (qwen local y Cloudflare Workers AI) y SPA React 18 + Vite + Tailwind con PWA. La suite paso de 317 a 320 tests en verde (3 nuevos de validacion de configuracion) y el build tipado del frontend sigue en verde. Correcciones de esta pasada: (1) SECRET_KEY ahora exige 32 caracteres y rechaza el placeholder de .env.example; (2) se elimino DATABASE_URL, que no usaba ningun consumidor, y docker-compose ahora conecta la API y Alembic al Postgres que levanta (con healthcheck antes de migrar); (3) el arranque avisa si CORS_ORIGINS sigue en '*'; (4) el panel de ajustes ya no se superpone al boton de NIom. Auditoria de dependencias: python-jose/ecdsa sin parche disponible (mitigado por HS256 con algorithms explicito) y react-router 6 moderado en produccion; sin credenciales reales de Supabase/Cloudflare, ninguna integracion remota se ha ejecutado ni desplegado.",
   "completed_work": [
     "Auditoria completa (estructura, backend, frontend, contratos, seguridad, tests, estado PWA/movil) con dos exploraciones read-only en paralelo y linea base de tests (229 passed).",
     "Cloudflare Workers AI integrado en el backend del agente como tercera implementacion del seam AgentBackend, con 29 tests nuevos.",
@@ -420,6 +420,14 @@
       "reason": "El streaming y la mascota son una entrega de funcionalidad posterior al parche 1.5.0: mezclarlas en la misma entrada dejaria el registro de versiones sin correspondencia con los cambios.",
       "impact": "Version coherente en API, SPA, paquete y documentacion, con cada seccion del changelog describiendo su propia entrega. ENGINE_VERSION sigue en 1.0.0 porque el motor de analisis no cambio.",
       "verification": "GET /health y /api/v1/health devuelven 1.6.0-alpha; los metadatos de OpenAPI dicen 'Stackwise 1.6.0-alpha'; el badge del SPA muestra '1.6.0 alpha' en desarrollo y en el build de produccion; grep confirma que solo queda la version nueva en los cuatro archivos."
+    },
+    {
+      "file": "frontend/src/App.tsx, frontend/src/components/SettingsMenu.tsx, frontend/src/components/AgentChat.tsx",
+      "change_type": "modified",
+      "description": "El panel de ajustes se abre justo encima de su FAB y crece hacia arriba por la misma esquina que ocupa el boton de NIom, de modo que lo tapaba. El estado de apertura pasa a App (SettingsMenu controlado con open/onOpenChange) y AgentChat recibe hidden, que lo oculta con visibility:hidden y pointer-events:none sin desmontarlo, para conservar la conversacion.",
+      "reason": "Dos clusters fixed en la misma esquina se solapaban al abrir el popup; el modal de ajustes tiene trampa de foco, asi que el boton de NIom tampoco debe poder recibir punteros mientras esta abierto.",
+      "impact": "Con los ajustes abiertos solo se ve el panel; al cerrarlo (Escape, clic fuera o el propio boton) el boton de NIom vuelve a su sitio y el chat conserva su estado.",
+      "verification": "tsc + vite build en verde; en Chromium con sesion iniciada, panel de ajustes abierto 320x227.5 con el cluster de NIom en visibility:hidden/pointer-events:none; Escape lo cierra y devuelve el foco al FAB de ajustes, el cluster vuelve a visible y el dialogo de NIom sigue abriendo con su estado intacto."
     }
   ],
   "integrations": {
@@ -430,13 +438,14 @@
         "El esquema es portable: UUID del dialecto Postgres, ondelete=CASCADE en el DDL, JSON generico, una unica revision baseline de Alembic con batch_alter_table para SQLite, y alembic/env.py traduce el URL asincrono al driver sincrono para migrar.",
         "Se anadio asyncpg a requirements.txt: sin el, postgresql+asyncpg:// no arranca (era el unico bloqueo real).",
         "SQLite ahora aplica las claves foraneas (PRAGMA foreign_keys=ON), de modo que la semantica de borrado coincide con la de Postgres.",
-        "No se ha podido conectar a un Postgres/Supabase real: en este entorno no hay demonio Docker ni servidor PostgreSQL y no existen credenciales autorizadas. Todo lo relativo a Postgres es inferencia a partir de tipos, DDL y Alembic, no ejecucion."
+        "No se ha podido conectar a un Postgres/Supabase real: en este entorno no hay demonio Docker ni servidor PostgreSQL y no existen credenciales autorizadas. Todo lo relativo a Postgres es inferencia a partir de tipos, DDL y Alembic, no ejecucion.",
+        "Stackwise no usa el SDK de Supabase, ni publishable/service keys, ni RLS: el backend es el unico cliente de la base y autoriza cada fila con sus propias dependencias."
       ],
       "manual_actions": [
-        "Crear el proyecto en Supabase y copiar la cadena de conexion del pooler (Session mode, puerto 5432).",
-        "pip install -r requirements.txt (incluye asyncpg).",
-        "Definir SQLALCHEMY_URL=postgresql+asyncpg://<usuario>:<password>@<host>:5432/<db>?ssl=require y DATABASE_URL con la misma cadena en formato sincrono (para Alembic).",
-        "Aplicar el esquema: alembic upgrade head.",
+        "Crear el proyecto en Supabase y copiar la cadena de conexion del pooler (Session mode, puerto 5432, o Transaction mode 6543).",
+        "pip install -r requirements.txt (incluye asyncpg y psycopg2-binary).",
+        "Definir SQLALCHEMY_URL=postgresql+asyncpg://<usuario>:<password>@<host>:<puerto>/<db>?ssl=require; es la unica URL que hay que configurar.",
+        "Aplicar el esquema: alembic upgrade head (traduce la URL async al driver sincrono).",
         "Comprobar GET /health y GET /api/v1/health (database ok) y ejecutar un analisis completo."
       ]
     },
@@ -488,7 +497,7 @@
     {
       "name": "SECRET_KEY",
       "used_by": "backend",
-      "purpose": "Firma de los JWT; sin valor por defecto, la aplicacion no arranca sin el",
+      "purpose": "Firma de los JWT; obligatoria, minimo 32 caracteres; el placeholder de .env.example se rechaza al arrancar",
       "required": true,
       "manual_configuration_required": true,
       "secret_value_included": false
@@ -496,32 +505,24 @@
     {
       "name": "SQLALCHEMY_URL",
       "used_by": "backend",
-      "purpose": "URL del engine async (SQLite por defecto; postgresql+asyncpg:// para Supabase)",
+      "purpose": "Unica URL de base de datos (driver async; SQLite por defecto, postgresql+asyncpg:// para Supabase). Alembic deriva el driver sincrono de esta misma URL",
       "required": true,
-      "manual_configuration_required": true,
-      "secret_value_included": false
-    },
-    {
-      "name": "DATABASE_URL",
-      "used_by": "backend, docker-compose",
-      "purpose": "URL sincrona de despliegue (Alembic y docker-compose)",
-      "required": false,
       "manual_configuration_required": true,
       "secret_value_included": false
     },
     {
       "name": "CLOUDFLARE_ACCOUNT_ID",
       "used_by": "backend",
-      "purpose": "Cuenta de Cloudflare para Workers AI",
-      "required": true,
+      "purpose": "Cuenta de Cloudflare para Workers AI (solo necesario con AGENT_BACKEND=cloudflare)",
+      "required": false,
       "manual_configuration_required": true,
       "secret_value_included": false
     },
     {
       "name": "CLOUDFLARE_API_TOKEN",
       "used_by": "backend",
-      "purpose": "Token de Workers AI (permiso Workers AI - Read)",
-      "required": true,
+      "purpose": "Token de Workers AI (permiso Workers AI - Read) (solo necesario con AGENT_BACKEND=cloudflare)",
+      "required": false,
       "manual_configuration_required": true,
       "secret_value_included": false
     },
@@ -588,148 +589,71 @@
       "required": false,
       "manual_configuration_required": true,
       "secret_value_included": false
+    },
+    {
+      "name": "POSTGRES_PASSWORD",
+      "used_by": "docker-compose",
+      "purpose": "Password del servicio PostgreSQL local; compose se niega a arrancar sin el",
+      "required": false,
+      "manual_configuration_required": true,
+      "secret_value_included": false
     }
   ],
   "tests": [
     {
-      "name": "Suite backend (linea base, antes de cambios)",
+      "name": "Suite backend (estado actual)",
       "status": "passed",
-      "details": "229 passed en 38,76s."
+      "details": "320 passed en 56,34s (317 previos + 3 de tests/test_config.py). Incluye analizadores reales, Cloudflare por servidor HTTP local, OAuth, cascadas y limites."
     },
     {
-      "name": "Suite backend (final)",
+      "name": "Validacion de SECRET_KEY",
       "status": "passed",
-      "details": "260 passed en 46,90s (31 casos nuevos: 29 del backend Cloudflare y 2 de la cascada)."
+      "details": "Clave de 31 caracteres rechazada; placeholder de .env.example rechazado; clave de 32 aceptada (tests/test_config.py)."
     },
     {
       "name": "Build de produccion del frontend",
       "status": "passed",
-      "details": "tsc + vite build, con service worker generado (10 entradas precacheadas); tambien con `npm run build --prefix frontend` desde la raiz."
+      "details": "tsc + vite build en verde; service worker generado con 10 entradas precacheadas."
     },
     {
-      "name": "Smoke test del API por HTTP real",
+      "name": "Smoke local de los dos procesos",
       "status": "passed",
-      "details": "uvicorn en :8001 con base SQLite temporal: /health, registro, login, /auth/me, creacion de proyecto, subida de ZIP (202), ejecucion completada en 0,53s con ruff 0.16.10, bandit 1.9.4 y radon 6.0.1, 4 hallazgos normalizados (B602, B608, B404, F401), dashboard y 401 sin token."
+      "details": "API en :8001 (GET /health 200, /api/v1/health 200) y Vite en :3000 sirviendo la SPA con proxy /api verificado. El agente qwen responde 503 por modelo no instalado, como esta documentado."
     },
     {
-      "name": "Agente en modo qwen sin el modelo instalado",
+      "name": "Verificacion en navegador del popup de ajustes",
       "status": "passed",
-      "details": "/agent/status devuelve available=false con el motivo y /agent/chat responde 503 con ese mismo motivo saneado."
+      "details": "Con sesion iniciada, a 1280x800 y 320x568: el panel de ajustes abre sin solapar el boton de NIom (cluster en visibility:hidden mientras el dialogo esta abierto), Escape cierra y devuelve el foco, y el borrador del chat sobrevive."
     },
     {
-      "name": "Agente en modo cloudflare contra la API real",
+      "name": "Auditoria de dependencias Python (pip-audit)",
+      "status": "warning",
+      "details": "3 avisos en 2 paquetes: python-jose 3.5.0 (PYSEC-2026-4298, sin version corregida) y ecdsa 0.19.2 (PYSEC-2026-1325, sin correccion prevista). El codigo restringe algorithms=[HS256] y no firma con ECDSA, por lo que los vectores descritos no son alcanzables; se documenta como riesgo residual."
+    },
+    {
+      "name": "Auditoria de dependencias npm",
+      "status": "warning",
+      "details": "2 vulnerabilidades moderadas de produccion (react-router 6, avisos GHSA-wrjc-x8rr-h8h6 y GHSA-337j-9hxr-rhxg; la correccion es react-router 7, cambio mayor) y 9 en total al incluir el toolchain de build (tailwind/braces, alta). No se fuerza el cambio mayor sin decision del usuario."
+    },
+    {
+      "name": "Escaneo de secretos en archivos versionados y bundle",
       "status": "passed",
-      "details": "/agent/status disponible y /agent/chat 503 con el motivo saneado tras la respuesta 401 real de Cloudflare; el token no aparece en la respuesta ni en el log."
+      "details": "git grep sin claves con forma real; frontend/dist sin referencias a CLOUDFLARE_*/SECRET_KEY/cadenas Postgres; solo VITE_API_URL entre las variables publicas. El historial conserva los antiguos valores de compose (documentado: rotar en cualquier entorno que los usara)."
     },
     {
-      "name": "PWA en navegador (build de produccion)",
-      "status": "passed",
-      "details": "Manifiesto 200 con nombre, start_url, display e iconos correctos; iconos y favicon 200; service worker activado con scope /; contexto seguro; metadatos iOS presentes."
+      "name": "docker-compose",
+      "status": "not_verified",
+      "details": "El archivo parsea y ahora define SQLALCHEMY_URL y depends_on con healthcheck, pero no se pudo ejecutar: no hay Docker en este entorno."
     },
     {
-      "name": "Sin conexion",
-      "status": "passed",
-      "details": "Con la red emulada como desconectada, el documento se sirve desde el service worker (fromServiceWorker true, 200), la peticion a /api falla a nivel de red (no se sirve de cache) y aparece el aviso explicito con Reintentar."
+      "name": "Supabase/PostgreSQL real",
+      "status": "not_verified",
+      "details": "Sin credenciales ni servidor PostgreSQL disponibles; la traduccion de URL async a sync y el modo pooler estan cubiertos por tests, no por una conexion real."
     },
     {
-      "name": "Actualizacion del service worker",
-      "status": "passed",
-      "details": "Al simular un despliegue (sw.js modificado) y forzar la comprobacion, el worker queda en waiting y aparece el aviso 'Hay una version nueva'; al pulsar Recargar se activa, el aviso desaparece y la sesion y los datos siguen intactos."
-    },
-    {
-      "name": "Drawer movil y foco",
-      "status": "passed",
-      "details": "A 320px: boton de menu 44x44, panel de 272px, role=dialog con aria-modal, Tab cicla solo dentro del panel, Escape cierra y devuelve el foco al boton, y el fondo no es una parada de tabulacion."
-    },
-    {
-      "name": "Layout 320 / 768 / 1440",
-      "status": "passed",
-      "details": "Sin desbordamiento horizontal en ninguno de los tres anchos (scrollWidth == innerWidth); sidebar de 256px a partir de 768; 4/2/1 columnas en las tarjetas de estadisticas; la tabla de proyectos se desplaza dentro de su tarjeta."
-    },
-    {
-      "name": "Estados de error del frontend",
-      "status": "passed",
-      "details": "Con GET /projects abortado: mensaje de fallo con Reintentar y sin el texto de lista vacia; al pulsar Reintentar cargan los datos. Con el API caido: estado de sesion inalcanzable y token conservado."
-    },
-    {
-      "name": "Instalacion en iPhone/iPad real",
-      "status": "not_run",
-      "details": "No hay hardware Apple disponible. Los metadatos, el icono PNG de 180px y el manifiesto estan implementados y comprobados, pero el flujo Compartir -> Anadir a pantalla de inicio no se ha probado fisicamente."
-    },
-    {
-      "name": "Instalacion en Android real",
-      "status": "not_run",
-      "details": "Sin dispositivo Android. La instalabilidad se ha comprobado en Chromium de escritorio (manifiesto valido, iconos, service worker, contexto seguro)."
-    },
-    {
-      "name": "Conexion a PostgreSQL/Supabase",
-      "status": "not_run",
-      "details": "Sin demonio Docker, sin servidor PostgreSQL y sin credenciales autorizadas en este entorno."
-    },
-    {
-      "name": "Generacion real con Cloudflare Workers AI",
-      "status": "blocked",
-      "details": "Requiere un token real con permiso Workers AI - Read, que no existe en el repositorio ni se ha solicitado."
-    },
-    {
-      "name": "Suite de tests del frontend",
-      "status": "not_run",
-      "details": "El proyecto no tiene runner de tests de frontend; la verificacion se ha hecho con el build type-checked y comprobaciones en navegador real."
-    },
-    {
-      "name": "tests/test_agent_stream.py",
-      "status": "passed",
-      "details": "13 passed. Incluye la secuencia de eventos, los fallos antes y despues del primer byte y el fallo de tiempo agotado."
-    },
-    {
-      "name": "tests/test_agent_cloudflare.py (streaming)",
-      "status": "passed",
-      "details": "4 casos nuevos sobre servidor local: frames SSE reales, comentario y frame ilegible descartados, llegada progresiva, credenciales y host inalcanzable. 33 passed en total en el archivo."
-    },
-    {
-      "name": "Suite completa tras el streaming y la mascota",
-      "status": "passed",
-      "details": "277 passed en 53,95s."
-    },
-    {
-      "name": "Maquina de estados de la mascota en navegador",
-      "status": "passed",
-      "details": "Con un backend stub que transmite de verdad: attentive -> user-sent -> thinking -> typing (portatil con opacidad 1 y brazos/cursor animados) -> success -> attentive; lapsos medidos por un MutationObserver sobre data-state."
-    },
-    {
-      "name": "Cancelacion en navegador",
-      "status": "passed",
-      "details": "A mitad de la escritura: se conserva el texto parcial con la nota 'Cancelled', vuelve a aparecer Enviar y la mascota vuelve a reposo (no a error)."
-    },
-    {
-      "name": "Error a mitad de stream en navegador",
-      "status": "passed",
-      "details": "Estado error con pose propia (pupilas giradas 14 grados y escaladas, antena en color de alerta), texto parcial conservado y nota de error en la voz del agente; al escribir de nuevo vuelve a atento."
-    },
-    {
-      "name": "prefers-reduced-motion",
-      "status": "passed",
-      "details": "Duraciones colapsadas a 0.01ms y, aun asi, cada estado se distingue: puntos de pensamiento a 0.85, antena en acento, ojos de error girados, portatil visible."
-    },
-    {
-      "name": "Conmutador de la mascota",
-      "status": "passed",
-      "details": "aria-pressed y etiqueta cambian, la figura desaparece y la preferencia sobrevive a una recarga (localStorage stackwise_mascot)."
-    },
-    {
-      "name": "Consola del navegador",
-      "status": "passed",
-      "details": "0 errores y 0 avisos; solo aparecen los ERR_ABORTED esperados de las dos cancelaciones deliberadas."
-    },
-    {
-      "name": "Chat en movil (390px)",
-      "status": "passed",
-      "details": "Panel 342x396 dentro del viewport, mascota 40x40 en la cabecera sin tapar compositor ni mensajes, sin desbordamiento horizontal."
-    },
-    {
-      "name": "Version 1.6.0-alpha en los cuatro puntos",
-      "status": "passed",
-      "details": "Comprobado contra el API en ejecucion (/health, /api/v1/health y la metadata de OpenAPI) y en el navegador (badge del SPA en desarrollo y en el build servido por preview)."
+      "name": "Cloudflare Workers AI real",
+      "status": "not_verified",
+      "details": "Sin token valido; el transporte, los envelopes de error y la redaccion del token estan cubiertos con respuestas simuladas. La generacion real queda pendiente de credenciales."
     }
   ],
   "pwa_and_mobile": {
@@ -756,14 +680,14 @@
     "readme_updated": true,
     "other_files_updated": [
       ".env.example",
-      "docs/API_CONTRACT.md",
       "docs/ANALYSIS_ENGINE.md",
+      "README.md",
       "PROGRESS_REPORT.json"
     ],
     "notes": [
-      "El README ya no se presenta como vista previa de copias de despliegue separadas: afirma que este repositorio es Stackwise Main y documenta como ejecutarlo, instalarlo como app y desplegarlo.",
-      "Las capturas de docs/preview/*.webp siguen siendo las anteriores: no se han regenerado porque no se ha solicitado y el encargo pide evitar cambios visuales radicales; el layout de escritorio es el mismo.",
-      "docs/ANALYSIS_ENGINE.md sigue siendo el documento de detalle del motor; el contrato del agente se documento en docs/API_CONTRACT.md para no duplicar informacion."
+      "README: la configuracion de Supabase usa una sola SQLALCHEMY_URL (Alembic deriva el driver sync); se explica que no se usa el SDK de Supabase ni RLS; SECRET_KEY exige 32 caracteres; docker-compose conecta de verdad al Postgres local.",
+      ".env.example: sin DATABASE_URL, con el aviso de CORS y el placeholder de SECRET_KEY que el arranque rechaza.",
+      "docs/ANALYSIS_ENGINE.md: corregida la afirmacion de que DATABASE_URL era la URL de Alembic."
     ]
   },
   "technical_decisions": [
@@ -791,47 +715,49 @@
     "Se descarto la variante 'compacta' de la mascota (y su CSS) al quedarse sin uso: una sola figura a dos tamanos es suficiente y evita codigo muerto."
   ],
   "known_issues": [
-    "datetime.utcnow() esta obsoleto en Python 3.14 (cientos de avisos en la suite, en modelos, security.py, status.py y tests). No rompe nada hoy; queda como deuda tecnica documentada en el roadmap.",
-    "HTTP_422_UNPROCESSABLE_ENTITY y HTTP_413_REQUEST_ENTITY_TOO_LARGE estan obsoletos en Starlette.",
-    "Los analizadores corren en subproceso con rlimits (CPU, memoria, tamano de fichero, timeout de grupo) pero sin aislamiento de red ni namespaces/cgroups: no es un sandbox. Es la limitacion principal y ya estaba documentada.",
-    "No hay cola real de trabajos: los analisis se ejecutan como BackgroundTask dentro del proceso del API (sin reintentos ni cancelacion; el estado cancelled existe pero nada lo produce).",
+    "python-jose 3.5.0 y ecdsa 0.19.2 tienen avisos sin version corregida. El uso actual es HS256 con algorithms=[HS256] explicito y sin firmas ECDSA, por lo que los vectores publicados no aplican; migrar a PyJWT queda como deuda si aparece un parche o cambia el algoritmo.",
+    "react-router 6 acumula dos avisos moderados de produccion; la correccion publicada es react-router 7 (cambio mayor) y no se ha forzado. El toolchain de build (tailwind/braces) aporta avisos altos de desarrollo que no se publican en el bundle.",
+    "requirements.txt no fija la mayoria de dependencias Python (solo los analizadores y bcrypt); una instalacion futura puede resolver versiones distintas. El frontend si usa package-lock.json.",
+    "CORS_ORIGINS sigue por defecto en [\"*\"] para desarrollo; el arranque lo advierte y el README exige el origen exacto en produccion.",
+    "Los analizadores no son un sandbox (sin namespaces/cgroups ni aislamiento de red); el runner limita entorno, CPU, memoria y tiempo.",
+    "Los analisis corren como BackgroundTask en el proceso del API: no sobreviven a un reinicio (el reaper los marca failed).",
     "El rate limiting y los limites de concurrencia son por proceso, no distribuidos.",
-    "CORS_ORIGINS tiene valor por defecto [\"*\"] y allow_credentials a la vez: debe restringirse en el despliegue (documentado en las notas de seguridad).",
-    "El aviso de sin conexion/actualizacion es un banner fijo en la parte superior y puede solaparse momentaneamente con el titulo de la pagina en escritorio; es transitorio y descartable.",
-    "El enlace 'Saltar al contenido' apunta a #sw-main: el foco se mueve, pero el contenedor no tiene tabindex, de modo que el siguiente Tab empieza en el primer control del contenido (comportamiento estandar de un enlace de salto).",
-    "Sin runner de tests de frontend, las reglas de layout movil no quedan fijadas por pruebas automaticas.",
-    "Codigo sin uso que NO se ha eliminado (el encargo prohibe borrar sin autorizacion expresa): AnalysisPersistenceService.count_findings y delete_findings, AnalyzerRegistry.applicable_languages, TokenData en app/schemas/user.py.",
-    "El esquema usa JSON generico (no JSONB) y DateTime sin zona horaria: portable, pero pierde operadores JSON e informacion de zona en PostgreSQL.",
-    "Las capturas de la documentacion (docs/preview/*.webp) son anteriores a esta version; el layout de escritorio no cambio, pero no reflejan la barra movil ni el aviso de PWA.",
-    "El runtime local (qwen) no transmite: entrega su respuesta completa como un unico fragmento, asi que con el la fase 'escribiendo' dura un instante y el portatil apenas se ve. Implementar TextIteratorStreamer es el camino si se quiere streaming local (no se ha hecho porque no puede probarse en este entorno: torch no esta instalado).",
-    "El chat no encola mensajes: mientras una respuesta se escribe, el boton es Detener y Enter no envia nada. Para mandar otra pregunta hay que detener o esperar.",
-    "Una cancelacion deliberada aparece como ERR_ABORTED en la consola del navegador: es el aspecto normal de un fetch abortado, no un fallo.",
-    "Las capturas de docs/preview siguen siendo anteriores a esta version (no incluyen la mascota ni el chat en streaming)."
+    "No hay runner de tests de frontend; el layout se verifica con build tipado y pasadas manuales.",
+    "datetime.utcnow() y algunas constantes de Starlette estan obsoletos (avisos, sin rotura actual).",
+    "El esquema usa JSON generico y DateTime sin zona horaria: portable, pero pierde operadores JSON y zona en PostgreSQL."
   ],
   "manual_actions_required": [
-    "Configurar el .env a partir de .env.example: como minimo SECRET_KEY; CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN si se usa el agente hosted; SQLALCHEMY_URL si se pasa a Supabase/Postgres.",
-    "Restringir CORS_ORIGINS al origen real del SPA antes de publicar y mantener DEV_OAUTH_MOCK=false.",
-    "Servir el frontend por HTTPS (la PWA y el service worker no funcionan sin contexto seguro) y con fallback de SPA hacia index.html.",
-    "Si se cambia de motor de base de datos, ejecutar alembic upgrade head contra la base de datos definitiva.",
-    "Probar la instalacion real en un iPhone/iPad (Compartir -> Anadir a pantalla de inicio) y en un Android, que es la unica parte del encargo sin verificar.",
-    "Probar una generacion real del agente con un token de Workers AI valido.",
-    "Revisar este informe y el informe final en texto antes de publicar. No se ha hecho git push ni ningun despliegue: la publicacion queda en manos del usuario.",
-    "Para ver el streaming con generacion real hacen falta credenciales de Workers AI (AGENT_BACKEND=cloudflare); con el runtime local el texto llegara de golpe."
+    "Generar un SECRET_KEY de al menos 32 caracteres (no el placeholder) antes de arrancar; en Render, generateValue ya lo hace.",
+    "Configurar SQLALCHEMY_URL con la cadena async de Supabase/Postgres y aplicar alembic upgrade head contra esa base.",
+    "Restringir CORS_ORIGINS al origen real del SPA; el arranque avisa mientras siga \"*\".",
+    "Mantener DEV_OAUTH_MOCK=false en cualquier host alcanzable.",
+    "Rotar los antiguos SECRET_KEY/POSTGRES_PASSWORD que quedaron en el historial de git (no se reescribe el historial).",
+    "Si se usa Cloudflare Workers AI: definir AGENT_BACKEND=cloudflare, CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN en el host del backend, y probar /api/v1/agent/status y una generacion real.",
+    "Si el backend no es stackwise-api.onrender.com, actualizar VITE_API_URL en netlify.toml antes del build.",
+    "Probar docker compose up en una maquina con Docker y una conexion real a PostgreSQL/Supabase.",
+    "Verificar la instalacion PWA en iOS/Android reales."
   ],
   "next_steps": [
-    "Si se quiere streaming tambien con el modelo local, implementar TextIteratorStreamer en app/agent/qwen.py y probarlo en una maquina con torch.",
-    "Regenerar las capturas de docs/preview con la mascota y el chat en streaming.",
-    "Verificar la instalacion como PWA en hardware iOS y Android reales.",
-    "Ejecutar la migracion baseline contra la base de datos definitiva (Supabase o Postgres propio) y comprobar el flujo completo con datos reales.",
-    "Configurar un token de Workers AI y validar una respuesta generada de extremo a extremo.",
-    "Anadir un runner de tests de frontend (Vitest) para fijar el layout movil y los estados de error.",
-    "Retirar las llamadas obsoletas (datetime.utcnow, constantes de estado de Starlette) y limpiar el codigo muerto listado arriba, con autorizacion expresa.",
-    "Sustituir la tarea en segundo plano por un worker real para que los analisis sobrevivan a un reinicio.",
-    "Regenerar las capturas de la documentacion con el layout movil y el banner de PWA."
+    "Ejecutar docker compose up en un entorno con Docker y comprobar que la API migra y consulta el Postgres del compose.",
+    "Aplicar alembic upgrade head contra Supabase/Postgres real y hacer un analisis completo.",
+    "Configurar Workers AI y validar una generacion real (sin exponer el token).",
+    "Evaluar react-router 7 y, si se adopta, volver a verificar rutas, redirecciones y PWA.",
+    "Migrar de python-jose a PyJWT si se quiere eliminar el aviso sin esperar un parche.",
+    "Fijar versiones del backend (requirements) para instalaciones reproducibles.",
+    "Anadir un runner de tests de frontend y regenerar las capturas de docs/preview.",
+    "Sustituir la BackgroundTask por un worker real para que los analisis sobrevivan a reinicios."
   ],
   "deployment": {
     "deployed": false,
     "git_push_performed": false,
-    "remote_changes_performed": false
+    "remote_changes_performed": false,
+    "frontend": "Netlify estatico: netlify.toml compila frontend/ y publica frontend/dist; VITE_API_URL se inyecta en build.",
+    "backend": "Render (Docker, render.yaml) o cualquier contenedor always-on. No existe adaptador de Netlify Functions ni se sirve FastAPI desde Netlify.",
+    "database": "SQLite local; PostgreSQL/Supabase mediante SQLALCHEMY_URL (el backend y Alembic usan la misma URL).",
+    "notes": [
+      "netlify.toml fija VITE_API_URL=https://stackwise-api.onrender.com/api/v1; si el servicio de Render cambia de nombre u host hay que actualizarlo antes del build.",
+      "Los secretos del backend se configuran en Render (o en el host del contenedor), no en Netlify. Netlify solo recibe VITE_API_URL, que es publica.",
+      "No se ha ejecutado git push, git history rewrite ni ningun despliegue."
+    ]
   }
 }

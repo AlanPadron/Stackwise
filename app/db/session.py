@@ -3,8 +3,8 @@
 The URL comes from `SQLALCHEMY_URL` (default: the local SQLite file). Point it at
 PostgreSQL — `postgresql+asyncpg://…`, the driver `requirements.txt` pins — to run
 the same code against Supabase/Postgres; the models already use the Postgres
-`UUID` dialect. The deployment's `DATABASE_URL` is kept separate because it is the
-*sync* URL docker-compose and the platform inject, not an async driver URL.
+`UUID` dialect. Alembic reads the same setting and translates it to its
+synchronous driver, so runtime and migrations cannot drift apart.
 
 A hosted pooler is handled here instead of being documented as a trap: see
 `uses_transaction_pooler`.
